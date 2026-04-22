@@ -1,0 +1,63 @@
+import { contextBridge, ipcRenderer } from 'electron'
+
+const api = {
+  // Products
+  getProducts: (filters?: Record<string, unknown>) =>
+    ipcRenderer.invoke('products:getAll', filters),
+  getProductByBarcode: (barcode: string) =>
+    ipcRenderer.invoke('products:getByBarcode', barcode),
+  searchProducts: (query: string) =>
+    ipcRenderer.invoke('products:search', query),
+  createProduct: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke('products:create', data),
+  updateProduct: (id: number, data: Record<string, unknown>) =>
+    ipcRenderer.invoke('products:update', id, data),
+  toggleProductActive: (id: number) =>
+    ipcRenderer.invoke('products:toggleActive', id),
+
+  // Categories
+  getCategories: () => ipcRenderer.invoke('categories:getAll'),
+  createCategory: (name: string) =>
+    ipcRenderer.invoke('categories:create', name),
+
+  // Customers
+  getCustomers: (search?: string) =>
+    ipcRenderer.invoke('customers:getAll', search),
+  createCustomer: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke('customers:create', data),
+  updateCustomer: (id: number, data: Record<string, unknown>) =>
+    ipcRenderer.invoke('customers:update', id, data),
+  deleteCustomer: (id: number) =>
+    ipcRenderer.invoke('customers:delete', id),
+
+  // Invoices
+  createInvoice: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke('invoices:create', data),
+  getInvoices: (filters?: Record<string, unknown>) =>
+    ipcRenderer.invoke('invoices:getAll', filters),
+  getInvoiceById: (id: number) =>
+    ipcRenderer.invoke('invoices:getById', id),
+  voidInvoice: (id: number) =>
+    ipcRenderer.invoke('invoices:void', id),
+
+  // Reports
+  getDailySales: (from: string, to: string) =>
+    ipcRenderer.invoke('reports:dailySales', from, to),
+  getTopProducts: (from: string, to: string, limit?: number) =>
+    ipcRenderer.invoke('reports:topProducts', from, to, limit),
+  getSalesSummary: (from: string, to: string) =>
+    ipcRenderer.invoke('reports:summary', from, to),
+
+  // Settings & Exchange Rates
+  getExchangeRates: () => ipcRenderer.invoke('settings:getRates'),
+  updateExchangeRate: (currency: string, rate: number) =>
+    ipcRenderer.invoke('settings:updateRate', currency, rate),
+  getSetting: (key: string) => ipcRenderer.invoke('settings:get', key),
+  setSetting: (key: string, value: string) =>
+    ipcRenderer.invoke('settings:set', key, value),
+  getAllSettings: () => ipcRenderer.invoke('settings:getAll')
+}
+
+contextBridge.exposeInMainWorld('api', api)
+
+export type ApiType = typeof api

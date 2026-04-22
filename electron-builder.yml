@@ -1,0 +1,26 @@
+appId: com.facturacion
+productName: Facturacion POS
+directories:
+  buildResources: resources
+  output: dist
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{tailwind.config.*,postcss.config.*}'
+asarUnpack:
+  - resources/**
+  - node_modules/better-sqlite3/**
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+win:
+  target:
+    - nsis
+mac:
+  target:
+    - dmg

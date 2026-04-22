@@ -1,0 +1,314 @@
+import { useEffect, useState, useCallback } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from '@/components/ui/dialog'
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight } from 'lucide-react'
+
+interface Product {
+  id: number
+  barcode: string | null
+  name: string
+  description: string | null
+  price_usd: number
+  cost_usd: number
+  category_id: number | null
+  category_name: string | null
+  stock: number
+  min_stock: number
+  is_active: number
+}
+
+interface Category {
+  id: number
+  name: string
+}
+
+const emptyForm = {
+  barcode: '',
+  name: '',
+  description: '',
+  price_usd: '',
+  cost_usd: '',
+  category_id: '',
+  stock: '',
+  min_stock: ''
+}
+
+export default function ProductsPage(): JSX.Element {
+  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [search, setSearch] = useState('')
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [form, setForm] = useState(emptyForm)
+  const [newCategoryName, setNewCategoryName] = useState('')
+
+  const loadProducts = useCallback(async () => {
+    const data = await window.api.getProducts({
+      search: search || undefined,
+      active_only: false
+    })
+    setProducts(data)
+  }, [search])
+
+  const loadCategories = useCallback(async () => {
+    setCategories(await window.api.getCategories())
+  }, [])
+
+  useEffect(() => {
+    loadProducts()
+    loadCategories()
+  }, [loadProducts, loadCategories])
+
+  function openNewDialog(): void {
+    setEditingId(null)
+    setForm(emptyForm)
+    setDialogOpen(true)
+  }
+
+  function openEditDialog(p: Product): void {
+    setEditingId(p.id)
+    setForm({
+      barcode: p.barcode || '',
+      name: p.name,
+      description: p.description || '',
+      price_usd: String(p.price_usd),
+      cost_usd: String(p.cost_usd),
+      category_id: p.category_id ? String(p.category_id) : '',
+      stock: String(p.stock),
+      min_stock: String(p.min_stock)
+    })
+    setDialogOpen(true)
+  }
+
+  async function handleSave(): Promise<void> {
+    const data = {
+      barcode: form.barcode || undefined,
+      name: form.name,
+      description: form.description || undefined,
+      price_usd: parseFloat(form.price_usd) || 0,
+      cost_usd: parseFloat(form.cost_usd) || 0,
+      category_id: form.category_id ? parseInt(form.category_id) : undefined,
+      stock: parseInt(form.stock) || 0,
+      min_stock: parseInt(form.min_stock) || 0
+    }
+
+    if (editingId) {
+      await window.api.updateProduct(editingId, data)
+    } else {
+      await window.api.createProduct(data)
+    }
+
+    setDialogOpen(false)
+    loadProducts()
+  }
+
+  async function handleToggleActive(id: number): Promise<void> {
+    await window.api.toggleProductActive(id)
+    loadProducts()
+  }
+
+  async function handleCreateCategory(): Promise<void> {
+    if (!newCategoryName.trim()) return
+    const cat = await window.api.createCategory(newCategoryName.trim())
+    setNewCategoryName('')
+    await loadCategories()
+    setForm((f) => ({ ...f, category_id: String(cat.id) }))
+  }
+
+  function updateForm(field: string, value: string): void {
+    setForm((f) => ({ ...f, [field]: value }))
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Productos</h1>
+        <Button onClick={openNewDialog}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nuevo Producto
+        </Button>
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+        <Input
+          className="pl-9"
+          placeholder="Buscar por nombre o codigo..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      <div className="border rounded-lg overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="text-left p-3 font-medium">Codigo</th>
+              <th className="text-left p-3 font-medium">Nombre</th>
+              <th className="text-left p-3 font-medium">Categoria</th>
+              <th className="text-right p-3 font-medium">Precio USD</th>
+              <th className="text-right p-3 font-medium">Stock</th>
+              <th className="text-center p-3 font-medium">Estado</th>
+              <th className="text-center p-3 font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((p) => (
+              <tr key={p.id} className="border-t hover:bg-muted/30">
+                <td className="p-3 font-mono text-xs">{p.barcode || '-'}</td>
+                <td className="p-3">{p.name}</td>
+                <td className="p-3">{p.category_name || '-'}</td>
+                <td className="p-3 text-right">${p.price_usd.toFixed(2)}</td>
+                <td className="p-3 text-right">
+                  <span className={p.stock <= p.min_stock ? 'text-red-500 font-semibold' : ''}>
+                    {p.stock}
+                  </span>
+                </td>
+                <td className="p-3 text-center">
+                  <Badge variant={p.is_active ? 'default' : 'secondary'}>
+                    {p.is_active ? 'Activo' : 'Inactivo'}
+                  </Badge>
+                </td>
+                <td className="p-3 text-center space-x-1">
+                  <Button variant="ghost" size="icon" onClick={() => openEditDialog(p)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleToggleActive(p.id)}>
+                    {p.is_active ? (
+                      <ToggleRight className="h-4 w-4" />
+                    ) : (
+                      <ToggleLeft className="h-4 w-4" />
+                    )}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {products.length === 0 && (
+              <tr>
+                <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                  No hay productos. Haz clic en "Nuevo Producto" para agregar uno.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingId ? 'Editar Producto' : 'Nuevo Producto'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Codigo de Barras</Label>
+              <Input
+                value={form.barcode}
+                onChange={(e) => updateForm('barcode', e.target.value)}
+                placeholder="Escanear o escribir codigo"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Nombre *</Label>
+              <Input
+                value={form.name}
+                onChange={(e) => updateForm('name', e.target.value)}
+                placeholder="Nombre del producto"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Descripcion</Label>
+              <Input
+                value={form.description}
+                onChange={(e) => updateForm('description', e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Precio USD *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.price_usd}
+                  onChange={(e) => updateForm('price_usd', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Costo USD</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.cost_usd}
+                  onChange={(e) => updateForm('cost_usd', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Categoria</Label>
+              <div className="flex gap-2">
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={form.category_id}
+                  onChange={(e) => updateForm('category_id', e.target.value)}
+                >
+                  <option value="">Sin categoria</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Nueva categoria..."
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="h-8 text-xs"
+                />
+                <Button size="sm" variant="outline" onClick={handleCreateCategory} className="h-8">
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Stock</Label>
+                <Input
+                  type="number"
+                  value={form.stock}
+                  onChange={(e) => updateForm('stock', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Stock Minimo</Label>
+                <Input
+                  type="number"
+                  value={form.min_stock}
+                  onChange={(e) => updateForm('min_stock', e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSave} disabled={!form.name || !form.price_usd}>
+              {editingId ? 'Guardar Cambios' : 'Crear Producto'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
