@@ -4,14 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency'
 import { format, subDays } from 'date-fns'
+import { CartesianGrid, Line, LineChart, XAxis } from 'recharts'
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer
-} from 'recharts'
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig
+} from '@/components/ui/chart'
 import {
   DollarSign,
   FileText,
@@ -37,6 +36,13 @@ interface ExchangeRate {
   currency: string
   rate: number
 }
+
+const chartConfig = {
+  total: {
+    label: 'Ventas (USD)',
+    color: 'hsl(221.2, 83.2%, 53.3%)'
+  }
+} satisfies ChartConfig
 
 export default function DashboardPage(): JSX.Element {
   const navigate = useNavigate()
@@ -159,21 +165,39 @@ export default function DashboardPage(): JSX.Element {
         </CardHeader>
         <CardContent>
           {weekSales.length > 0 ? (
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={weekSales}>
+            <ChartContainer config={chartConfig}>
+              <LineChart
+                accessibilityLayer
+                data={weekSales}
+                margin={{ left: 12, right: 12 }}
+              >
+                <CartesianGrid vertical={false} />
                 <XAxis
                   dataKey="day"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
                   tickFormatter={(v) => format(new Date(v + 'T00:00:00'), 'dd/MM')}
-                  fontSize={12}
                 />
-                <YAxis fontSize={12} tickFormatter={(v) => `$${v}`} />
-                <Tooltip
-                  formatter={(value: number) => [formatUSD(value), 'Total']}
-                  labelFormatter={(label) => format(new Date(label + 'T00:00:00'), 'dd/MM/yyyy')}
+                <ChartTooltip
+                  cursor={false}
+                  content={
+                    <ChartTooltipContent
+                      labelFormatter={(label) =>
+                        format(new Date(label + 'T00:00:00'), 'dd/MM/yyyy')
+                      }
+                    />
+                  }
                 />
-                <Bar dataKey="total" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+                <Line
+                  dataKey="total"
+                  type="natural"
+                  stroke="var(--color-total)"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ChartContainer>
           ) : (
             <p className="text-center text-muted-foreground py-8">
               No hay ventas en los ultimos 7 dias
