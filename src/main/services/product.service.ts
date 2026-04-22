@@ -1,4 +1,7 @@
 import type Database from 'better-sqlite3'
+import { app } from 'electron'
+import { join } from 'path'
+import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
 
 export interface Product {
   id: number
@@ -12,6 +15,7 @@ export interface Product {
   stock: number
   min_stock: number
   is_active: number
+  image_path: string | null
   created_at: string
   updated_at: string
 }
@@ -135,6 +139,40 @@ export class ProductService {
     this.db
       .prepare("UPDATE products SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = datetime('now') WHERE id = ?")
       .run(id)
+  }
+
+  saveImage(productId: number, imageData: string, extension: string): string {
+    const imagesDir = join(app.getPath('userData'), 'product-images')
+    if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true })
+
+    // Remove old image if exists
+    const product = this.db.prepare('SELECT image_path FROM products WHERE id = ?').get(productId) as { image_path: string | null } | undefined
+    if (product?.image_path && existsSync(product.image_path)) {
+      try { unlinkSync(product.image_path) } catch { /* ignore */ }
+    }
+
+    // Save new image
+    const fileName = `product_${productId}_${Date.now()}.${extension}`
+    const filePath = join(imagesDir, fileName)
+    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '')
+    writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
+
+    // Update DB
+    this.db.prepare("UPDATE products SET image_path = ?, updated_at = datetime('now') WHERE id = ?").run(filePath, productId)
+
+    return filePath
+  }
+
+  removeImage(productId: number): void {
+    const product = this.db.prepare('SELECT image_path FROM products WHERE id = ?').get(productId) as { image_path: string | null } | undefined
+    if (product?.image_path && existsSync(product.image_path)) {
+      try { unlinkSync(product.image_path) } catch { /* ignore */ }
+    }
+    this.db.prepare("UPDATE products SET image_path = NULL, updated_at = datetime('now') WHERE id = ?").run(productId)
+  }
+
+  getImagesDir(): string {
+    return join(app.getPath('userData'), 'product-images')
   }
 
   // Categories

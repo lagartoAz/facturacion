@@ -111,4 +111,9 @@ export function runMigrations(db: Database.Database): void {
 
     db.pragma('user_version = 1')
   }
+
+  if (version < 2) {
+    db.exec(`ALTER TABLE products ADD COLUMN image_path TEXT`)
+    db.pragma('user_version = 2')
+  }
 }

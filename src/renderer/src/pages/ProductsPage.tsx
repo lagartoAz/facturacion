@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogFooter
 } from '@/components/ui/dialog'
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, Package } from 'lucide-react'
 
 interface Product {
   id: number
@@ -24,6 +24,7 @@ interface Product {
   stock: number
   min_stock: number
   is_active: number
+  image_path: string | null
 }
 
 interface Category {
@@ -50,6 +51,11 @@ export default function ProductsPage(): JSX.Element {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [newCategoryName, setNewCategoryName] = useState('')
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageFile, setImageFile] = useState<{ data: string; extension: string } | null>(null)
+  const [existingImagePath, setExistingImagePath] = useState<string | null>(null)
+  const [removeImage, setRemoveImage] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProducts = useCallback(async () => {
     const data = await window.api.getProducts({
@@ -71,6 +77,10 @@ export default function ProductsPage(): JSX.Element {
   function openNewDialog(): void {
     setEditingId(null)
     setForm(emptyForm)
+    setImagePreview(null)
+    setImageFile(null)
+    setExistingImagePath(null)
+    setRemoveImage(false)
     setDialogOpen(true)
   }
 
@@ -86,7 +96,35 @@ export default function ProductsPage(): JSX.Element {
       stock: String(p.stock),
       min_stock: String(p.min_stock)
     })
+    setExistingImagePath(p.image_path)
+    setImagePreview(p.image_path ? `file://${p.image_path}` : null)
+    setImageFile(null)
+    setRemoveImage(false)
     setDialogOpen(true)
+  }
+
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const extension = file.name.split('.').pop()?.toLowerCase() || 'png'
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      setImagePreview(dataUrl)
+      setImageFile({ data: dataUrl, extension })
+      setRemoveImage(false)
+    }
+    reader.readAsDataURL(file)
+
+    // Reset file input so the same file can be selected again
+    e.target.value = ''
+  }
+
+  function handleRemoveImage(): void {
+    setImagePreview(null)
+    setImageFile(null)
+    setRemoveImage(true)
   }
 
   async function handleSave(): Promise<void> {
@@ -101,10 +139,21 @@ export default function ProductsPage(): JSX.Element {
       min_stock: parseInt(form.min_stock) || 0
     }
 
+    let productId: number
+
     if (editingId) {
       await window.api.updateProduct(editingId, data)
+      productId = editingId
     } else {
-      await window.api.createProduct(data)
+      const created = await window.api.createProduct(data)
+      productId = created.id
+    }
+
+    // Handle image
+    if (imageFile) {
+      await window.api.saveProductImage(productId, imageFile.data, imageFile.extension)
+    } else if (removeImage && existingImagePath) {
+      await window.api.removeProductImage(productId)
     }
 
     setDialogOpen(false)
@@ -152,6 +201,7 @@ export default function ProductsPage(): JSX.Element {
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
+              <th className="text-left p-3 font-medium w-12">Img</th>
               <th className="text-left p-3 font-medium">Codigo</th>
               <th className="text-left p-3 font-medium">Nombre</th>
               <th className="text-left p-3 font-medium">Categoria</th>
@@ -164,6 +214,19 @@ export default function ProductsPage(): JSX.Element {
           <tbody>
             {products.map((p) => (
               <tr key={p.id} className="border-t hover:bg-muted/30">
+                <td className="p-2">
+                  {p.image_path ? (
+                    <img
+                      src={`file://${p.image_path}`}
+                      alt={p.name}
+                      className="h-8 w-8 rounded object-cover"
+                    />
+                  ) : (
+                    <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  )}
+                </td>
                 <td className="p-3 font-mono text-xs">{p.barcode || '-'}</td>
                 <td className="p-3">{p.name}</td>
                 <td className="p-3">{p.category_name || '-'}</td>
@@ -194,7 +257,7 @@ export default function ProductsPage(): JSX.Element {
             ))}
             {products.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                <td colSpan={8} className="p-8 text-center text-muted-foreground">
                   No hay productos. Haz clic en "Nuevo Producto" para agregar uno.
                 </td>
               </tr>
@@ -204,11 +267,62 @@ export default function ProductsPage(): JSX.Element {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Editar Producto' : 'Nuevo Producto'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {/* Image section */}
+            <div className="space-y-2">
+              <Label>Imagen del Producto</Label>
+              <div className="flex items-start gap-4">
+                {imagePreview ? (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="h-24 w-24 rounded-lg object-cover border"
+                    />
+                    <button
+                      onClick={handleRemoveImage}
+                      className="absolute -top-2 -right-2 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-24 w-24 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center cursor-pointer hover:border-primary/50 transition-colors"
+                  >
+                    <ImagePlus className="h-6 w-6 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground mt-1">Agregar</span>
+                  </div>
+                )}
+                <div className="flex-1 space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <ImagePlus className="mr-2 h-4 w-4" />
+                    {imagePreview ? 'Cambiar imagen' : 'Seleccionar imagen'}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    JPG, PNG o WebP. Se redimensiona automaticamente.
+                  </p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleImageSelect}
+                  className="hidden"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label>Codigo de Barras</Label>
               <Input

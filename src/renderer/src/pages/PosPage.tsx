@@ -22,7 +22,8 @@ import {
   ShoppingCart,
   DollarSign,
   CreditCard,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Package
 } from 'lucide-react'
 
 interface Product {
@@ -31,6 +32,7 @@ interface Product {
   name: string
   price_usd: number
   stock: number
+  image_path: string | null
 }
 
 interface CartItem {
@@ -360,7 +362,7 @@ export default function PosPage(): JSX.Element {
           {searchResults.map((p) => (
             <button
               key={p.id}
-              className="w-full text-left p-2 rounded-md hover:bg-accent transition-colors flex items-center justify-between"
+              className="w-full text-left p-2 rounded-md hover:bg-accent transition-colors flex items-center gap-2"
               onClick={() => {
                 addToCart(p)
                 setSearchQuery('')
@@ -368,7 +370,18 @@ export default function PosPage(): JSX.Element {
                 barcodeInputRef.current?.focus()
               }}
             >
-              <div className="min-w-0">
+              {p.image_path ? (
+                <img
+                  src={`file://${p.image_path}`}
+                  alt={p.name}
+                  className="h-8 w-8 rounded object-cover shrink-0"
+                />
+              ) : (
+                <div className="h-8 w-8 rounded bg-muted flex items-center justify-center shrink-0">
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{p.name}</p>
                 <p className="text-xs text-muted-foreground">
                   Stock: {p.stock}

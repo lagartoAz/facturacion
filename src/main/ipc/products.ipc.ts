@@ -30,6 +30,18 @@ export function registerProductHandlers(db: Database.Database): void {
     service.toggleActive(id)
   })
 
+  ipcMain.handle('products:saveImage', (_event, productId: number, imageData: string, extension: string) => {
+    return service.saveImage(productId, imageData, extension)
+  })
+
+  ipcMain.handle('products:removeImage', (_event, productId: number) => {
+    service.removeImage(productId)
+  })
+
+  ipcMain.handle('products:getImagesDir', () => {
+    return service.getImagesDir()
+  })
+
   ipcMain.handle('categories:getAll', () => {
     return service.getCategories()
   })

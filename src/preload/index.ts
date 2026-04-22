@@ -14,6 +14,10 @@ const api = {
     ipcRenderer.invoke('products:update', id, data),
   toggleProductActive: (id: number) =>
     ipcRenderer.invoke('products:toggleActive', id),
+  saveProductImage: (productId: number, imageData: string, extension: string) =>
+    ipcRenderer.invoke('products:saveImage', productId, imageData, extension),
+  removeProductImage: (productId: number) =>
+    ipcRenderer.invoke('products:removeImage', productId),
 
   // Categories
   getCategories: () => ipcRenderer.invoke('categories:getAll'),
