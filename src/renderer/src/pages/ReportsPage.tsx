@@ -85,6 +85,26 @@ export default function ReportsPage(): JSX.Element {
         <Button
           variant="outline"
           onClick={() => {
+            const today = format(new Date(), 'yyyy-MM-dd')
+            setDateFrom(today)
+            setDateTo(today)
+          }}
+        >
+          Hoy
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+            setDateFrom(yesterday)
+            setDateTo(yesterday)
+          }}
+        >
+          Ayer
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
             setDateFrom(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
             setDateTo(format(new Date(), 'yyyy-MM-dd'))
           }}
