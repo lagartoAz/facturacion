@@ -139,13 +139,26 @@ export default function SettingsPage(): JSX.Element {
             </div>
             <div className="space-y-2">
               <Label htmlFor="taxPercent">IVA (%)</Label>
-              <Input
-                id="taxPercent"
-                type="number"
-                step="0.1"
-                value={taxPercent}
-                onChange={(e) => setTaxPercent(e.target.value)}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="taxPercent"
+                  type="number"
+                  step="0.1"
+                  value={taxPercent}
+                  onChange={(e) => setTaxPercent(e.target.value)}
+                  disabled={taxPercent === '0'}
+                  className={taxPercent === '0' ? 'opacity-50' : ''}
+                />
+                <Button
+                  type="button"
+                  variant={taxPercent === '0' ? 'destructive' : 'outline'}
+                  size="sm"
+                  className="whitespace-nowrap"
+                  onClick={() => setTaxPercent(taxPercent === '0' ? '16' : '0')}
+                >
+                  {taxPercent === '0' ? 'Sin IVA' : 'Desactivar'}
+                </Button>
+              </div>
             </div>
           </div>
           <Separator />
