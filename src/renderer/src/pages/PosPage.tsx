@@ -23,8 +23,11 @@ import {
   DollarSign,
   CreditCard,
   ArrowRightLeft,
-  Package
+  Package,
+  Printer,
+  CheckCircle2
 } from 'lucide-react'
+import { format } from 'date-fns'
 
 interface Product {
   id: number
@@ -43,6 +46,23 @@ interface CartItem {
   stock: number
 }
 
+interface CompletedInvoice {
+  id: number
+  invoice_number: string
+  customer_name: string | null
+  subtotal_usd: number
+  tax_percent: number
+  tax_amount_usd: number
+  total_usd: number
+  rate_ves: number | null
+  rate_cop: number | null
+  total_ves: number | null
+  total_cop: number | null
+  payment_method: string
+  created_at: string
+  items: { product_name: string; quantity: number; unit_price: number; subtotal: number }[]
+}
+
 interface ExchangeRate {
   currency: string
   rate: number
@@ -59,6 +79,8 @@ export default function PosPage(): JSX.Element {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [notification, setNotification] = useState('')
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false)
+  const [completedInvoice, setCompletedInvoice] = useState<CompletedInvoice | null>(null)
   const barcodeInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -181,7 +203,7 @@ export default function PosPage(): JSX.Element {
 
   async function handleConfirmPayment(): Promise<void> {
     try {
-      await window.api.createInvoice({
+      const invoice = await window.api.createInvoice({
         customerId: selectedCustomerId || undefined,
         items: cart.map((item) => ({
           productId: item.productId,
@@ -192,12 +214,15 @@ export default function PosPage(): JSX.Element {
         paymentMethod
       })
 
-      showNotification('Venta registrada exitosamente!')
+      // Fetch full invoice with items for printing
+      const fullInvoice = await window.api.getInvoiceById(invoice.id)
+      setCompletedInvoice(fullInvoice)
+
       setCart([])
       setSelectedCustomerId(null)
       setPaymentDialogOpen(false)
       setPaymentMethod('cash')
-      barcodeInputRef.current?.focus()
+      setSuccessDialogOpen(true)
 
       // Reload rates in case they changed
       const newRates = await window.api.getExchangeRates()
@@ -205,6 +230,63 @@ export default function PosPage(): JSX.Element {
     } catch (err) {
       showNotification(`Error: ${(err as Error).message}`)
     }
+  }
+
+  function handlePrintInvoice(): void {
+    if (!completedInvoice) return
+    const inv = completedInvoice
+    const printWindow = window.open('', '_blank', 'width=400,height=600')
+    if (!printWindow) return
+
+    const itemsHtml = inv.items
+      .map(
+        (item) => `
+      <tr>
+        <td style="padding:2px 0">${item.product_name}</td>
+        <td style="text-align:center">${item.quantity}</td>
+        <td style="text-align:right">$${item.unit_price.toFixed(2)}</td>
+        <td style="text-align:right">$${item.subtotal.toFixed(2)}</td>
+      </tr>`
+      )
+      .join('')
+
+    printWindow.document.write(`
+      <html><head><title>${inv.invoice_number}</title>
+      <style>
+        body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; }
+        table { width: 100%; border-collapse: collapse; }
+        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        .center { text-align: center; }
+        .right { text-align: right; }
+        .bold { font-weight: bold; }
+      </style></head><body>
+        <div class="center bold">${inv.invoice_number}</div>
+        <div class="center">${format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm')}</div>
+        ${inv.customer_name ? `<div class="center">${inv.customer_name}</div>` : ''}
+        <div class="divider"></div>
+        <table>
+          <tr><th style="text-align:left">Producto</th><th>Cant</th><th style="text-align:right">P.U.</th><th style="text-align:right">Total</th></tr>
+          ${itemsHtml}
+        </table>
+        <div class="divider"></div>
+        <div class="right">Subtotal: $${inv.subtotal_usd.toFixed(2)}</div>
+        <div class="right">IVA (${inv.tax_percent}%): $${inv.tax_amount_usd.toFixed(2)}</div>
+        <div class="right bold">TOTAL: $${inv.total_usd.toFixed(2)}</div>
+        ${inv.total_ves ? `<div class="right">Bs. ${inv.total_ves.toFixed(2)} (Tasa: ${inv.rate_ves?.toFixed(2)})</div>` : ''}
+        ${inv.total_cop ? `<div class="right">COP ${Math.round(inv.total_cop)} (Tasa: ${inv.rate_cop?.toFixed(0)})</div>` : ''}
+        <div class="divider"></div>
+        <div class="center">Pago: ${inv.payment_method}</div>
+        <div class="center" style="margin-top:10px">Gracias por su compra!</div>
+      </body></html>
+    `)
+    printWindow.document.close()
+    printWindow.print()
+  }
+
+  function handleCloseSuccess(): void {
+    setSuccessDialogOpen(false)
+    setCompletedInvoice(null)
+    barcodeInputRef.current?.focus()
   }
 
   return (
@@ -452,6 +534,75 @@ export default function PosPage(): JSX.Element {
             </Button>
             <Button onClick={handleConfirmPayment} size="lg">
               Confirmar Venta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Dialog - Print or Continue */}
+      <Dialog open={successDialogOpen} onOpenChange={(open) => { if (!open) handleCloseSuccess() }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Venta Registrada
+            </DialogTitle>
+          </DialogHeader>
+          {completedInvoice && (
+            <div className="space-y-4">
+              <div className="text-center space-y-1">
+                <p className="text-sm text-muted-foreground">
+                  {completedInvoice.invoice_number}
+                </p>
+                <p className="text-3xl font-bold text-green-600">
+                  {formatUSD(completedInvoice.total_usd)}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {completedInvoice.total_ves
+                    ? formatVES(completedInvoice.total_ves)
+                    : ''}{' '}
+                  |{' '}
+                  {completedInvoice.total_cop
+                    ? formatCOP(completedInvoice.total_cop)
+                    : ''}
+                </p>
+              </div>
+              <Separator />
+              <div className="text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Cliente</span>
+                  <span>{completedInvoice.customer_name || 'Consumidor Final'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Items</span>
+                  <span>{completedInvoice.items.length} productos</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Pago</span>
+                  <span>
+                    {completedInvoice.payment_method === 'cash'
+                      ? 'Efectivo'
+                      : completedInvoice.payment_method === 'card'
+                        ? 'Tarjeta'
+                        : 'Transferencia'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button variant="outline" onClick={handleCloseSuccess} className="flex-1">
+              Continuar sin imprimir
+            </Button>
+            <Button
+              onClick={() => {
+                handlePrintInvoice()
+                handleCloseSuccess()
+              }}
+              className="flex-1"
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              Imprimir Factura
             </Button>
           </DialogFooter>
         </DialogContent>
