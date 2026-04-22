@@ -16,4 +16,8 @@ export function registerReportHandlers(db: Database.Database): void {
   ipcMain.handle('reports:summary', (_event, from: string, to: string) => {
     return service.summary(from, to)
   })
+
+  ipcMain.handle('reports:productStats', (_event, productId: number) => {
+    return service.productStats(productId)
+  })
 }

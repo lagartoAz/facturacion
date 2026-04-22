@@ -10,7 +10,17 @@ import {
   DialogTitle,
   DialogFooter
 } from '@/components/ui/dialog'
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, Package } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
+import { formatUSD } from '@/lib/currency'
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, Package, BarChart3 } from 'lucide-react'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer
+} from 'recharts'
 
 interface Product {
   id: number
@@ -30,6 +40,15 @@ interface Product {
 interface Category {
   id: number
   name: string
+}
+
+interface ProductStats {
+  total_quantity: number
+  total_revenue: number
+  total_invoices: number
+  first_sale: string | null
+  last_sale: string | null
+  monthly_sales: { month: string; quantity: number; revenue: number }[]
 }
 
 const emptyForm = {
@@ -55,6 +74,9 @@ export default function ProductsPage(): JSX.Element {
   const [imageFile, setImageFile] = useState<{ data: string; extension: string } | null>(null)
   const [existingImagePath, setExistingImagePath] = useState<string | null>(null)
   const [removeImage, setRemoveImage] = useState(false)
+  const [statsDialogOpen, setStatsDialogOpen] = useState(false)
+  const [statsProduct, setStatsProduct] = useState<Product | null>(null)
+  const [stats, setStats] = useState<ProductStats | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProducts = useCallback(async () => {
@@ -173,6 +195,14 @@ export default function ProductsPage(): JSX.Element {
     setForm((f) => ({ ...f, category_id: String(cat.id) }))
   }
 
+  async function openStats(p: Product): Promise<void> {
+    setStatsProduct(p)
+    setStats(null)
+    setStatsDialogOpen(true)
+    const data = await window.api.getProductStats(p.id)
+    setStats(data)
+  }
+
   function updateForm(field: string, value: string): void {
     setForm((f) => ({ ...f, [field]: value }))
   }
@@ -242,10 +272,13 @@ export default function ProductsPage(): JSX.Element {
                   </Badge>
                 </td>
                 <td className="p-3 text-center space-x-1">
-                  <Button variant="ghost" size="icon" onClick={() => openEditDialog(p)}>
+                  <Button variant="ghost" size="icon" onClick={() => openStats(p)} title="Estadisticas">
+                    <BarChart3 className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => openEditDialog(p)} title="Editar">
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleToggleActive(p.id)}>
+                  <Button variant="ghost" size="icon" onClick={() => handleToggleActive(p.id)} title={p.is_active ? 'Desactivar' : 'Activar'}>
                     {p.is_active ? (
                       <ToggleRight className="h-4 w-4" />
                     ) : (
@@ -421,6 +454,99 @@ export default function ProductsPage(): JSX.Element {
               {editingId ? 'Guardar Cambios' : 'Crear Producto'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stats Dialog */}
+      <Dialog open={statsDialogOpen} onOpenChange={setStatsDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Estadisticas: {statsProduct?.name}
+            </DialogTitle>
+          </DialogHeader>
+          {statsProduct && (
+            <div className="space-y-4">
+              {/* Product info */}
+              <div className="flex items-center gap-3">
+                {statsProduct.image_path ? (
+                  <img
+                    src={`file://${statsProduct.image_path}`}
+                    alt={statsProduct.name}
+                    className="h-12 w-12 rounded object-cover"
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded bg-muted flex items-center justify-center">
+                    <Package className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                )}
+                <div>
+                  <p className="font-medium">{statsProduct.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {statsProduct.barcode || 'Sin codigo'} | {formatUSD(statsProduct.price_usd)}
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
+              {!stats ? (
+                <p className="text-center text-muted-foreground py-4">Cargando...</p>
+              ) : stats.total_invoices === 0 ? (
+                <p className="text-center text-muted-foreground py-4">
+                  Este producto no tiene ventas registradas.
+                </p>
+              ) : (
+                <>
+                  {/* Summary cards */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="border rounded-lg p-3 text-center">
+                      <p className="text-2xl font-bold">{stats.total_quantity}</p>
+                      <p className="text-xs text-muted-foreground">Unidades vendidas</p>
+                    </div>
+                    <div className="border rounded-lg p-3 text-center">
+                      <p className="text-2xl font-bold">{formatUSD(stats.total_revenue)}</p>
+                      <p className="text-xs text-muted-foreground">Ingresos totales</p>
+                    </div>
+                    <div className="border rounded-lg p-3 text-center">
+                      <p className="text-2xl font-bold">{stats.total_invoices}</p>
+                      <p className="text-xs text-muted-foreground">Facturas</p>
+                    </div>
+                  </div>
+
+                  {/* Date range */}
+                  <div className="text-sm text-muted-foreground flex justify-between">
+                    <span>Primera venta: {stats.first_sale ? new Date(stats.first_sale).toLocaleDateString('es') : '-'}</span>
+                    <span>Ultima venta: {stats.last_sale ? new Date(stats.last_sale).toLocaleDateString('es') : '-'}</span>
+                  </div>
+
+                  {/* Monthly chart */}
+                  {stats.monthly_sales.length > 1 && (
+                    <>
+                      <Separator />
+                      <div>
+                        <p className="text-sm font-medium mb-2">Ventas mensuales (unidades)</p>
+                        <ResponsiveContainer width="100%" height={180}>
+                          <BarChart data={[...stats.monthly_sales].reverse()}>
+                            <XAxis dataKey="month" fontSize={11} />
+                            <YAxis fontSize={11} />
+                            <Tooltip
+                              formatter={(value: number, name: string) => [
+                                name === 'quantity' ? `${value} uds` : formatUSD(value),
+                                name === 'quantity' ? 'Cantidad' : 'Ingreso'
+                              ]}
+                            />
+                            <Bar dataKey="quantity" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

@@ -51,6 +51,8 @@ const api = {
     ipcRenderer.invoke('reports:topProducts', from, to, limit),
   getSalesSummary: (from: string, to: string) =>
     ipcRenderer.invoke('reports:summary', from, to),
+  getProductStats: (productId: number) =>
+    ipcRenderer.invoke('reports:productStats', productId),
 
   // Settings & Exchange Rates
   getExchangeRates: () => ipcRenderer.invoke('settings:getRates'),
