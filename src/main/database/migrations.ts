@@ -180,4 +180,14 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 6')
   }
+
+  if (version < 7) {
+    db.exec(`
+      ALTER TABLE cash_register ADD COLUMN opening_amount_ves REAL NOT NULL DEFAULT 0;
+      ALTER TABLE cash_register ADD COLUMN opening_amount_cop REAL NOT NULL DEFAULT 0;
+      ALTER TABLE cash_register ADD COLUMN closing_amount_ves REAL;
+      ALTER TABLE cash_register ADD COLUMN closing_amount_cop REAL;
+    `)
+    db.pragma('user_version = 7')
+  }
 }

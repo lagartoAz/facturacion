@@ -3,8 +3,12 @@ import type Database from 'better-sqlite3'
 export interface CashRegister {
   id: number
   opening_amount: number
+  opening_amount_ves: number
+  opening_amount_cop: number
   opening_notes: string | null
   closing_amount: number | null
+  closing_amount_ves: number | null
+  closing_amount_cop: number | null
   closing_notes: string | null
   sales_cash: number
   sales_card: number
@@ -16,6 +20,18 @@ export interface CashRegister {
   status: string
   opened_at: string
   closed_at: string | null
+}
+
+export interface OpenAmounts {
+  usd: number
+  ves: number
+  cop: number
+}
+
+export interface CloseAmounts {
+  usd: number
+  ves: number
+  cop: number
 }
 
 interface SalesByMethod {
@@ -37,22 +53,24 @@ export class CashRegisterService {
     )
   }
 
-  open(amount: number, notes?: string): CashRegister {
+  open(amounts: OpenAmounts, notes?: string): CashRegister {
     const current = this.getCurrent()
     if (current) {
       throw new Error('Ya hay una caja abierta. Cierra la caja actual antes de abrir una nueva.')
     }
 
     const result = this.db
-      .prepare('INSERT INTO cash_register (opening_amount, opening_notes) VALUES (?, ?)')
-      .run(amount, notes || null)
+      .prepare(
+        'INSERT INTO cash_register (opening_amount, opening_amount_ves, opening_amount_cop, opening_notes) VALUES (?, ?, ?, ?)'
+      )
+      .run(amounts.usd, amounts.ves, amounts.cop, notes || null)
 
     return this.db
       .prepare('SELECT * FROM cash_register WHERE id = ?')
       .get(result.lastInsertRowid) as CashRegister
   }
 
-  close(countedAmount: number, notes?: string): CashRegister {
+  close(countedAmounts: CloseAmounts, notes?: string): CashRegister {
     const current = this.getCurrent()
     if (!current) {
       throw new Error('No hay caja abierta.')
@@ -60,19 +78,22 @@ export class CashRegisterService {
 
     const sales = this.getSalesForSession(current.opened_at)
     const expectedCash = current.opening_amount + sales.cash
-    const difference = countedAmount - expectedCash
+    const difference = countedAmounts.usd - expectedCash
 
     this.db
       .prepare(
         `UPDATE cash_register SET
-          closing_amount = ?, closing_notes = ?,
+          closing_amount = ?, closing_amount_ves = ?, closing_amount_cop = ?,
+          closing_notes = ?,
           sales_cash = ?, sales_card = ?, sales_transfer = ?, sales_credit = ?,
           total_invoices = ?, expected_cash = ?, difference = ?,
           status = 'closed', closed_at = datetime('now')
         WHERE id = ?`
       )
       .run(
-        countedAmount,
+        countedAmounts.usd,
+        countedAmounts.ves,
+        countedAmounts.cop,
         notes || null,
         sales.cash,
         sales.card,

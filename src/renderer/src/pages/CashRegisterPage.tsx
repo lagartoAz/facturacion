@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogFooter
 } from '@/components/ui/dialog'
-import { formatUSD } from '@/lib/currency'
+import { formatUSD, formatVES, formatCOP } from '@/lib/currency'
 import { format } from 'date-fns'
 import {
   Landmark,
@@ -28,8 +28,12 @@ import {
 interface CashRegister {
   id: number
   opening_amount: number
+  opening_amount_ves: number
+  opening_amount_cop: number
   opening_notes: string | null
   closing_amount: number | null
+  closing_amount_ves: number | null
+  closing_amount_cop: number | null
   closing_notes: string | null
   sales_cash: number
   sales_card: number
@@ -58,12 +62,16 @@ export default function CashRegisterPage(): JSX.Element {
   const [loading, setLoading] = useState(true)
 
   // Open form
-  const [openAmount, setOpenAmount] = useState('')
+  const [openUsd, setOpenUsd] = useState('')
+  const [openVes, setOpenVes] = useState('')
+  const [openCop, setOpenCop] = useState('')
   const [openNotes, setOpenNotes] = useState('')
 
   // Close dialog
   const [closeDialogOpen, setCloseDialogOpen] = useState(false)
-  const [countedAmount, setCountedAmount] = useState('')
+  const [closeUsd, setCloseUsd] = useState('')
+  const [closeVes, setCloseVes] = useState('')
+  const [closeCop, setCloseCop] = useState('')
   const [closeNotes, setCloseNotes] = useState('')
 
   // Notification
@@ -92,14 +100,18 @@ export default function CashRegisterPage(): JSX.Element {
   }
 
   async function handleOpen(): Promise<void> {
-    const amount = parseFloat(openAmount)
-    if (isNaN(amount) || amount < 0) {
-      showNotification('Ingresa un monto valido')
+    const usd = parseFloat(openUsd) || 0
+    const ves = parseFloat(openVes) || 0
+    const cop = parseFloat(openCop) || 0
+    if (usd < 0 || ves < 0 || cop < 0) {
+      showNotification('Los montos no pueden ser negativos')
       return
     }
     try {
-      await window.api.openCashRegister(amount, openNotes || undefined)
-      setOpenAmount('')
+      await window.api.openCashRegister({ usd, ves, cop }, openNotes || undefined)
+      setOpenUsd('')
+      setOpenVes('')
+      setOpenCop('')
       setOpenNotes('')
       await loadData()
       showNotification('Caja abierta exitosamente')
@@ -109,15 +121,19 @@ export default function CashRegisterPage(): JSX.Element {
   }
 
   async function handleClose(): Promise<void> {
-    const counted = parseFloat(countedAmount)
-    if (isNaN(counted) || counted < 0) {
-      showNotification('Ingresa el monto contado')
+    const usd = parseFloat(closeUsd) || 0
+    const ves = parseFloat(closeVes) || 0
+    const cop = parseFloat(closeCop) || 0
+    if (usd < 0 || ves < 0 || cop < 0) {
+      showNotification('Los montos no pueden ser negativos')
       return
     }
     try {
-      await window.api.closeCashRegister(counted, closeNotes || undefined)
+      await window.api.closeCashRegister({ usd, ves, cop }, closeNotes || undefined)
       setCloseDialogOpen(false)
-      setCountedAmount('')
+      setCloseUsd('')
+      setCloseVes('')
+      setCloseCop('')
       setCloseNotes('')
       await loadData()
       showNotification('Caja cerrada exitosamente')
@@ -127,7 +143,9 @@ export default function CashRegisterPage(): JSX.Element {
   }
 
   function openCloseDialog(): void {
-    setCountedAmount('')
+    setCloseUsd('')
+    setCloseVes('')
+    setCloseCop('')
     setCloseNotes('')
     setCloseDialogOpen(true)
   }
@@ -170,24 +188,51 @@ export default function CashRegisterPage(): JSX.Element {
         )}
       </div>
 
-      {/* Open register form - shown when no register is open */}
+      {/* Open register form */}
       {!currentRegister && (
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Abrir Caja</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="openAmount">Monto inicial (USD)</Label>
-              <Input
-                id="openAmount"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={openAmount}
-                onChange={(e) => setOpenAmount(e.target.value)}
-              />
+            <p className="text-sm text-muted-foreground">Efectivo inicial en caja</p>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="openUsd">Dolares (USD)</Label>
+                <Input
+                  id="openUsd"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={openUsd}
+                  onChange={(e) => setOpenUsd(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="openVes">Bolivares (VES)</Label>
+                <Input
+                  id="openVes"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={openVes}
+                  onChange={(e) => setOpenVes(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="openCop">Pesos (COP)</Label>
+                <Input
+                  id="openCop"
+                  type="number"
+                  step="1"
+                  min="0"
+                  placeholder="0"
+                  value={openCop}
+                  onChange={(e) => setOpenCop(e.target.value)}
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="openNotes">Notas (opcional)</Label>
@@ -206,7 +251,7 @@ export default function CashRegisterPage(): JSX.Element {
         </Card>
       )}
 
-      {/* Current session - shown when register is open */}
+      {/* Current session */}
       {currentRegister && sessionSales && (
         <>
           <Card>
@@ -220,16 +265,29 @@ export default function CashRegisterPage(): JSX.Element {
                   {format(new Date(currentRegister.opened_at), 'dd/MM/yyyy HH:mm')}
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Monto inicial:</span>{' '}
-                  <span className="font-medium">{formatUSD(currentRegister.opening_amount)}</span>
+                  <span className="text-muted-foreground">Efectivo inicial:</span>
                 </div>
-                {currentRegister.opening_notes && (
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground">Notas:</span>{' '}
-                    {currentRegister.opening_notes}
-                  </div>
-                )}
               </div>
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="p-2 rounded bg-muted/50 text-center">
+                  <p className="text-muted-foreground text-xs">USD</p>
+                  <p className="font-medium">{formatUSD(currentRegister.opening_amount)}</p>
+                </div>
+                <div className="p-2 rounded bg-muted/50 text-center">
+                  <p className="text-muted-foreground text-xs">VES</p>
+                  <p className="font-medium">{formatVES(currentRegister.opening_amount_ves)}</p>
+                </div>
+                <div className="p-2 rounded bg-muted/50 text-center">
+                  <p className="text-muted-foreground text-xs">COP</p>
+                  <p className="font-medium">{formatCOP(currentRegister.opening_amount_cop)}</p>
+                </div>
+              </div>
+              {currentRegister.opening_notes && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">Notas:</span>{' '}
+                  {currentRegister.opening_notes}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -309,9 +367,7 @@ export default function CashRegisterPage(): JSX.Element {
                     <th className="text-left p-3 font-medium">Cierre</th>
                     <th className="text-right p-3 font-medium">Ventas</th>
                     <th className="text-right p-3 font-medium">Facturas</th>
-                    <th className="text-right p-3 font-medium">Esperado</th>
-                    <th className="text-right p-3 font-medium">Contado</th>
-                    <th className="text-right p-3 font-medium">Diferencia</th>
+                    <th className="text-right p-3 font-medium">Diferencia USD</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -323,8 +379,6 @@ export default function CashRegisterPage(): JSX.Element {
                         <td className="p-3">{reg.closed_at ? format(new Date(reg.closed_at), 'dd/MM HH:mm') : '-'}</td>
                         <td className="p-3 text-right">{formatUSD(totalSales)}</td>
                         <td className="p-3 text-right">{reg.total_invoices}</td>
-                        <td className="p-3 text-right">{reg.expected_cash != null ? formatUSD(reg.expected_cash) : '-'}</td>
-                        <td className="p-3 text-right">{reg.closing_amount != null ? formatUSD(reg.closing_amount) : '-'}</td>
                         <td className={`p-3 text-right font-medium ${reg.difference != null ? (reg.difference < 0 ? 'text-red-500' : reg.difference > 0 ? 'text-green-500' : '') : ''}`}>
                           {reg.difference != null ? (reg.difference >= 0 ? '+' : '') + formatUSD(reg.difference) : '-'}
                         </td>
@@ -377,9 +431,10 @@ export default function CashRegisterPage(): JSX.Element {
 
               <Separator />
 
+              {/* Expected USD cash */}
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Monto apertura</span>
+                  <span className="text-muted-foreground">Apertura USD</span>
                   <span>{formatUSD(currentRegister.opening_amount)}</span>
                 </div>
                 <div className="flex justify-between">
@@ -388,27 +443,59 @@ export default function CashRegisterPage(): JSX.Element {
                 </div>
                 <Separator />
                 <div className="flex justify-between font-bold">
-                  <span>Efectivo esperado</span>
+                  <span>Efectivo USD esperado</span>
                   <span>{formatUSD(currentRegister.opening_amount + sessionSales.cash)}</span>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Efectivo contado (USD)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Cuenta el efectivo en caja..."
-                  value={countedAmount}
-                  onChange={(e) => setCountedAmount(e.target.value)}
-                  autoFocus
-                />
-                {countedAmount && !isNaN(parseFloat(countedAmount)) && (
+              <Separator />
+
+              {/* Counted amounts */}
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Efectivo contado en caja</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Dolares (USD)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={closeUsd}
+                      onChange={(e) => setCloseUsd(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Bolivares (VES)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={closeVes}
+                      onChange={(e) => setCloseVes(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Pesos (COP)</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder="0"
+                      value={closeCop}
+                      onChange={(e) => setCloseCop(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* USD difference */}
+                {closeUsd && !isNaN(parseFloat(closeUsd)) && (
                   <div className="text-sm">
-                    <span className="text-muted-foreground">Diferencia: </span>
+                    <span className="text-muted-foreground">Diferencia USD: </span>
                     {(() => {
-                      const diff = parseFloat(countedAmount) - (currentRegister.opening_amount + sessionSales.cash)
+                      const diff = parseFloat(closeUsd) - (currentRegister.opening_amount + sessionSales.cash)
                       return (
                         <span className={`font-medium ${diff < 0 ? 'text-red-500' : diff > 0 ? 'text-green-500' : ''}`}>
                           {diff >= 0 ? '+' : ''}{formatUSD(diff)}
@@ -434,11 +521,7 @@ export default function CashRegisterPage(): JSX.Element {
             <Button variant="outline" onClick={() => setCloseDialogOpen(false)}>
               Cancelar
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleClose}
-              disabled={!countedAmount || isNaN(parseFloat(countedAmount)) || parseFloat(countedAmount) < 0}
-            >
+            <Button variant="destructive" onClick={handleClose}>
               Confirmar Cierre
             </Button>
           </DialogFooter>

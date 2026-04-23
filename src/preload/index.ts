@@ -75,10 +75,10 @@ const api = {
 
   // Cash Register
   getCashRegister: () => ipcRenderer.invoke('cash-register:getCurrent'),
-  openCashRegister: (amount: number, notes?: string) =>
-    ipcRenderer.invoke('cash-register:open', amount, notes),
-  closeCashRegister: (countedAmount: number, notes?: string) =>
-    ipcRenderer.invoke('cash-register:close', countedAmount, notes),
+  openCashRegister: (amounts: { usd: number; ves: number; cop: number }, notes?: string) =>
+    ipcRenderer.invoke('cash-register:open', amounts, notes),
+  closeCashRegister: (countedAmounts: { usd: number; ves: number; cop: number }, notes?: string) =>
+    ipcRenderer.invoke('cash-register:close', countedAmounts, notes),
   getCashRegisterHistory: () => ipcRenderer.invoke('cash-register:getHistory'),
   getCashRegisterSales: (openedAt: string) =>
     ipcRenderer.invoke('cash-register:getSales', openedAt)
