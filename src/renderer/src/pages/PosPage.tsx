@@ -36,6 +36,7 @@ interface Product {
   price_usd: number
   stock: number
   image_path: string | null
+  is_by_weight: number
 }
 
 interface CartItem {
@@ -44,6 +45,7 @@ interface CartItem {
   unitPrice: number
   quantity: number
   stock: number
+  isByWeight: boolean
 }
 
 interface CompletedInvoice {
@@ -51,8 +53,6 @@ interface CompletedInvoice {
   invoice_number: string
   customer_name: string | null
   subtotal_usd: number
-  tax_percent: number
-  tax_amount_usd: number
   total_usd: number
   rate_ves: number | null
   rate_cop: number | null
@@ -71,8 +71,10 @@ interface ExchangeRate {
 export default function PosPage(): JSX.Element {
   const [cart, setCart] = useState<CartItem[]>([])
   const [rates, setRates] = useState<ExchangeRate[]>([])
-  const [taxPercent, setTaxPercent] = useState(16)
   const [searchQuery, setSearchQuery] = useState('')
+  const [weightDialogOpen, setWeightDialogOpen] = useState(false)
+  const [weightInput, setWeightInput] = useState('')
+  const [pendingWeightProduct, setPendingWeightProduct] = useState<Product | null>(null)
   const [searchResults, setSearchResults] = useState<Product[]>([])
   const [customers, setCustomers] = useState<{ id: number; name: string }[]>([])
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
@@ -88,13 +90,11 @@ export default function PosPage(): JSX.Element {
   }, [])
 
   async function loadInitialData(): Promise<void> {
-    const [ratesData, settings, customersData] = await Promise.all([
+    const [ratesData, customersData] = await Promise.all([
       window.api.getExchangeRates(),
-      window.api.getAllSettings(),
       window.api.getCustomers()
     ])
     setRates(ratesData)
-    setTaxPercent(parseFloat(settings.tax_percent) || 16)
     setCustomers(customersData)
   }
 
@@ -103,35 +103,55 @@ export default function PosPage(): JSX.Element {
 
   const addToCart = useCallback(
     (product: Product) => {
-      setCart((prev) => {
-        const existing = prev.find((item) => item.productId === product.id)
-        if (existing) {
-          if (existing.quantity >= product.stock) {
-            showNotification(`Stock insuficiente para ${product.name}`)
-            return prev
-          }
-          return prev.map((item) =>
-            item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item
-          )
-        }
-        if (product.stock <= 0) {
-          showNotification(`Sin stock: ${product.name}`)
-          return prev
-        }
-        return [
-          ...prev,
-          {
-            productId: product.id,
-            productName: product.name,
-            unitPrice: product.price_usd,
-            quantity: 1,
-            stock: product.stock
-          }
-        ]
-      })
+      if (product.is_by_weight) {
+        setPendingWeightProduct(product)
+        setWeightInput('')
+        setWeightDialogOpen(true)
+        return
+      }
+      addToCartDirect(product, 1, false)
     },
     []
   )
+
+  function addToCartDirect(product: Product, quantity: number, isByWeight: boolean): void {
+    setCart((prev) => {
+      const existing = prev.find((item) => item.productId === product.id)
+      if (existing && !isByWeight) {
+        if (existing.quantity >= product.stock) {
+          showNotification(`Stock insuficiente para ${product.name}`)
+          return prev
+        }
+        return prev.map((item) =>
+          item.productId === product.id ? { ...item, quantity: item.quantity + quantity } : item
+        )
+      }
+      if (product.stock <= 0) {
+        showNotification(`Sin stock: ${product.name}`)
+        return prev
+      }
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          productName: product.name,
+          unitPrice: product.price_usd,
+          quantity,
+          stock: product.stock,
+          isByWeight
+        }
+      ]
+    })
+  }
+
+  function handleConfirmWeight(): void {
+    const weight = parseFloat(weightInput)
+    if (!pendingWeightProduct || isNaN(weight) || weight <= 0) return
+    addToCartDirect(pendingWeightProduct, weight, true)
+    setWeightDialogOpen(false)
+    setPendingWeightProduct(null)
+    barcodeInputRef.current?.focus()
+  }
 
   const { handleKeyDown } = useBarcode({
     onScan: async (barcode) => {
@@ -197,9 +217,7 @@ export default function PosPage(): JSX.Element {
     setTimeout(() => setNotification(''), 3000)
   }
 
-  const subtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
-  const taxAmount = subtotal * (taxPercent / 100)
-  const total = subtotal + taxAmount
+  const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
 
   async function handleConfirmPayment(): Promise<void> {
     try {
@@ -269,8 +287,6 @@ export default function PosPage(): JSX.Element {
           ${itemsHtml}
         </table>
         <div class="divider"></div>
-        <div class="right">Subtotal: $${inv.subtotal_usd.toFixed(2)}</div>
-        <div class="right">IVA (${inv.tax_percent}%): $${inv.tax_amount_usd.toFixed(2)}</div>
         <div class="right bold">TOTAL: $${inv.total_usd.toFixed(2)}</div>
         ${inv.total_ves ? `<div class="right">Bs. ${inv.total_ves.toFixed(2)} (Tasa: ${inv.rate_ves?.toFixed(2)})</div>` : ''}
         ${inv.total_cop ? `<div class="right">COP ${Math.round(inv.total_cop)} (Tasa: ${inv.rate_cop?.toFixed(0)})</div>` : ''}
@@ -319,36 +335,40 @@ export default function PosPage(): JSX.Element {
             </div>
           ) : (
             <div className="space-y-2">
-              {cart.map((item) => (
+              {cart.map((item, idx) => (
                 <div
-                  key={item.productId}
+                  key={item.isByWeight ? `${item.productId}-${idx}` : item.productId}
                   className="flex items-center gap-3 p-3 border rounded-lg"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{item.productName}</p>
                     <p className="text-sm text-muted-foreground">
-                      {formatUSD(item.unitPrice)} c/u
+                      {formatUSD(item.unitPrice)}{item.isByWeight ? '/kg' : ' c/u'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => updateQuantity(item.productId, -1)}
-                    >
-                      <Minus className="h-3 w-3" />
-                    </Button>
-                    <span className="w-8 text-center font-medium">{item.quantity}</span>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => updateQuantity(item.productId, 1)}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
+                  {item.isByWeight ? (
+                    <span className="text-sm font-medium">{item.quantity.toFixed(3)} kg</span>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => updateQuantity(item.productId, -1)}
+                      >
+                        <Minus className="h-3 w-3" />
+                      </Button>
+                      <span className="w-8 text-center font-medium">{item.quantity}</span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => updateQuantity(item.productId, 1)}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
                   <p className="w-20 text-right font-semibold">
                     {formatUSD(item.unitPrice * item.quantity)}
                   </p>
@@ -356,7 +376,7 @@ export default function PosPage(): JSX.Element {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7"
-                    onClick={() => removeFromCart(item.productId)}
+                    onClick={() => item.isByWeight ? setCart(prev => prev.filter((_, i) => i !== idx)) : removeFromCart(item.productId)}
                   >
                     <Trash2 className="h-3 w-3 text-red-500" />
                   </Button>
@@ -368,15 +388,6 @@ export default function PosPage(): JSX.Element {
 
         {/* Totals */}
         <div className="border-t pt-4 mt-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Subtotal</span>
-            <span>{formatUSD(subtotal)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span>IVA ({taxPercent}%)</span>
-            <span>{formatUSD(taxAmount)}</span>
-          </div>
-          <Separator />
           <div className="flex justify-between text-lg font-bold">
             <span>Total USD</span>
             <span>{formatUSD(total)}</span>
@@ -471,7 +482,7 @@ export default function PosPage(): JSX.Element {
                 </p>
               </div>
               <Badge variant="secondary" className="ml-2 shrink-0">
-                {formatUSD(p.price_usd)}
+                {formatUSD(p.price_usd)}{p.is_by_weight ? '/kg' : ''}
               </Badge>
             </button>
           ))}
@@ -603,6 +614,45 @@ export default function PosPage(): JSX.Element {
             >
               <Printer className="mr-2 h-4 w-4" />
               Imprimir Factura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Weight Dialog */}
+      <Dialog open={weightDialogOpen} onOpenChange={setWeightDialogOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Peso del Producto</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {pendingWeightProduct?.name} - {pendingWeightProduct ? formatUSD(pendingWeightProduct.price_usd) : ''}/kg
+            </p>
+            <div className="space-y-2">
+              <Input
+                type="number"
+                step="0.001"
+                min="0.001"
+                placeholder="Peso en kg (ej: 0.500)"
+                value={weightInput}
+                onChange={(e) => setWeightInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmWeight() }}
+                autoFocus
+              />
+              {weightInput && !isNaN(parseFloat(weightInput)) && parseFloat(weightInput) > 0 && (
+                <p className="text-sm text-right font-medium">
+                  Total: {formatUSD(parseFloat(weightInput) * (pendingWeightProduct?.price_usd ?? 0))}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWeightDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleConfirmWeight} disabled={!weightInput || isNaN(parseFloat(weightInput)) || parseFloat(weightInput) <= 0}>
+              Agregar al Carrito
             </Button>
           </DialogFooter>
         </DialogContent>

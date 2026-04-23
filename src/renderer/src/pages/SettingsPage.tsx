@@ -13,7 +13,6 @@ export default function SettingsPage(): JSX.Element {
   const [businessRif, setBusinessRif] = useState('')
   const [businessAddress, setBusinessAddress] = useState('')
   const [businessPhone, setBusinessPhone] = useState('')
-  const [taxPercent, setTaxPercent] = useState('')
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -33,7 +32,6 @@ export default function SettingsPage(): JSX.Element {
     setBusinessRif(settings.business_rif || '')
     setBusinessAddress(settings.business_address || '')
     setBusinessPhone(settings.business_phone || '')
-    setTaxPercent(settings.tax_percent || '16')
   }
 
   async function saveRates(): Promise<void> {
@@ -50,8 +48,7 @@ export default function SettingsPage(): JSX.Element {
       window.api.setSetting('business_name', businessName),
       window.api.setSetting('business_rif', businessRif),
       window.api.setSetting('business_address', businessAddress),
-      window.api.setSetting('business_phone', businessPhone),
-      window.api.setSetting('tax_percent', taxPercent)
+      window.api.setSetting('business_phone', businessPhone)
     ])
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -128,38 +125,13 @@ export default function SettingsPage(): JSX.Element {
               onChange={(e) => setBusinessAddress(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="businessPhone">Telefono</Label>
-              <Input
-                id="businessPhone"
-                value={businessPhone}
-                onChange={(e) => setBusinessPhone(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="taxPercent">IVA (%)</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="taxPercent"
-                  type="number"
-                  step="0.1"
-                  value={taxPercent}
-                  onChange={(e) => setTaxPercent(e.target.value)}
-                  disabled={taxPercent === '0'}
-                  className={taxPercent === '0' ? 'opacity-50' : ''}
-                />
-                <Button
-                  type="button"
-                  variant={taxPercent === '0' ? 'destructive' : 'outline'}
-                  size="sm"
-                  className="whitespace-nowrap"
-                  onClick={() => setTaxPercent(taxPercent === '0' ? '16' : '0')}
-                >
-                  {taxPercent === '0' ? 'Sin IVA' : 'Desactivar'}
-                </Button>
-              </div>
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="businessPhone">Telefono</Label>
+            <Input
+              id="businessPhone"
+              value={businessPhone}
+              onChange={(e) => setBusinessPhone(e.target.value)}
+            />
           </div>
           <Separator />
           <Button onClick={saveBusinessInfo} size="sm">

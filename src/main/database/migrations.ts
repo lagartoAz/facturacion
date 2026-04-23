@@ -106,7 +106,7 @@ export function runMigrations(db: Database.Database): void {
     insertSetting.run('business_rif', '')
     insertSetting.run('business_address', '')
     insertSetting.run('business_phone', '')
-    insertSetting.run('tax_percent', '16')
+    insertSetting.run('tax_percent', '0')
     insertSetting.run('next_invoice_number', '1')
 
     db.pragma('user_version = 1')
@@ -115,5 +115,12 @@ export function runMigrations(db: Database.Database): void {
   if (version < 2) {
     db.exec(`ALTER TABLE products ADD COLUMN image_path TEXT`)
     db.pragma('user_version = 2')
+  }
+
+  if (version < 3) {
+    db.exec(`ALTER TABLE products ADD COLUMN is_by_weight INTEGER NOT NULL DEFAULT 0`)
+    // Set tax_percent to 0 (IVA removed)
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('tax_percent', '0')").run()
+    db.pragma('user_version = 3')
   }
 }

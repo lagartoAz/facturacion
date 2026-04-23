@@ -76,9 +76,7 @@ export class InvoiceService {
         (sum, item) => sum + item.quantity * item.unitPrice,
         0
       )
-      const taxPercent = parseFloat(this.settingsService.get('tax_percent') ?? '16')
-      const taxAmount = subtotal * (taxPercent / 100)
-      const total = subtotal + taxAmount
+      const total = subtotal
 
       // Insert invoice
       const result = this.db
@@ -92,8 +90,8 @@ export class InvoiceService {
           invoiceNumber,
           data.customerId || null,
           subtotal,
-          taxPercent,
-          taxAmount,
+          0,
+          0,
           total,
           rateVes,
           rateCop,

@@ -110,8 +110,6 @@ export default function InvoicesPage(): JSX.Element {
           ${itemsHtml}
         </table>
         <div class="divider"></div>
-        <div class="right">Subtotal: $${inv.subtotal_usd.toFixed(2)}</div>
-        <div class="right">IVA (${inv.tax_percent}%): $${inv.tax_amount_usd.toFixed(2)}</div>
         <div class="right bold">TOTAL: $${inv.total_usd.toFixed(2)}</div>
         ${inv.total_ves ? `<div class="right">Bs. ${inv.total_ves.toFixed(2)} (Tasa: ${inv.rate_ves?.toFixed(2)})</div>` : ''}
         ${inv.total_cop ? `<div class="right">COP ${Math.round(inv.total_cop)} (Tasa: ${inv.rate_cop?.toFixed(0)})</div>` : ''}
@@ -258,15 +256,6 @@ export default function InvoicesPage(): JSX.Element {
               <Separator />
 
               <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span>{formatUSD(selectedInvoice.subtotal_usd)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>IVA ({selectedInvoice.tax_percent}%)</span>
-                  <span>{formatUSD(selectedInvoice.tax_amount_usd)}</span>
-                </div>
-                <Separator />
                 <div className="flex justify-between font-bold text-base">
                   <span>Total USD</span>
                   <span>{formatUSD(selectedInvoice.total_usd)}</span>

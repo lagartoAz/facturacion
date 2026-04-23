@@ -15,6 +15,7 @@ export interface Product {
   stock: number
   min_stock: number
   is_active: number
+  is_by_weight: number
   image_path: string | null
   created_at: string
   updated_at: string
@@ -29,6 +30,7 @@ export interface CreateProductDTO {
   category_id?: number
   stock?: number
   min_stock?: number
+  is_by_weight?: number
 }
 
 export interface UpdateProductDTO extends Partial<CreateProductDTO> {}
@@ -93,8 +95,8 @@ export class ProductService {
   create(data: CreateProductDTO): Product {
     const result = this.db
       .prepare(
-        `INSERT INTO products (barcode, name, description, price_usd, cost_usd, category_id, stock, min_stock)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO products (barcode, name, description, price_usd, cost_usd, category_id, stock, min_stock, is_by_weight)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         data.barcode || null,
@@ -104,7 +106,8 @@ export class ProductService {
         data.cost_usd ?? 0,
         data.category_id || null,
         data.stock ?? 0,
-        data.min_stock ?? 0
+        data.min_stock ?? 0,
+        data.is_by_weight ?? 0
       )
     return this.db
       .prepare('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?')
@@ -123,6 +126,7 @@ export class ProductService {
     if (data.category_id !== undefined) { fields.push('category_id = ?'); params.push(data.category_id || null) }
     if (data.stock !== undefined) { fields.push('stock = ?'); params.push(data.stock) }
     if (data.min_stock !== undefined) { fields.push('min_stock = ?'); params.push(data.min_stock) }
+    if (data.is_by_weight !== undefined) { fields.push('is_by_weight = ?'); params.push(data.is_by_weight) }
 
     if (fields.length > 0) {
       fields.push("updated_at = datetime('now')")

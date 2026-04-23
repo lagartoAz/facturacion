@@ -34,6 +34,7 @@ interface Product {
   stock: number
   min_stock: number
   is_active: number
+  is_by_weight: number
   image_path: string | null
 }
 
@@ -59,7 +60,8 @@ const emptyForm = {
   cost_usd: '',
   category_id: '',
   stock: '',
-  min_stock: ''
+  min_stock: '',
+  is_by_weight: false
 }
 
 export default function ProductsPage(): JSX.Element {
@@ -116,7 +118,8 @@ export default function ProductsPage(): JSX.Element {
       cost_usd: String(p.cost_usd),
       category_id: p.category_id ? String(p.category_id) : '',
       stock: String(p.stock),
-      min_stock: String(p.min_stock)
+      min_stock: String(p.min_stock),
+      is_by_weight: !!p.is_by_weight
     })
     setExistingImagePath(p.image_path)
     setImagePreview(p.image_path ? `file://${p.image_path}` : null)
@@ -158,7 +161,8 @@ export default function ProductsPage(): JSX.Element {
       cost_usd: parseFloat(form.cost_usd) || 0,
       category_id: form.category_id ? parseInt(form.category_id) : undefined,
       stock: parseInt(form.stock) || 0,
-      min_stock: parseInt(form.min_stock) || 0
+      min_stock: parseInt(form.min_stock) || 0,
+      is_by_weight: form.is_by_weight ? 1 : 0
     }
 
     let productId: number
@@ -260,7 +264,7 @@ export default function ProductsPage(): JSX.Element {
                 <td className="p-3 font-mono text-xs">{p.barcode || '-'}</td>
                 <td className="p-3">{p.name}</td>
                 <td className="p-3">{p.category_name || '-'}</td>
-                <td className="p-3 text-right">${p.price_usd.toFixed(2)}</td>
+                <td className="p-3 text-right">${p.price_usd.toFixed(2)}{p.is_by_weight ? '/kg' : ''}</td>
                 <td className="p-3 text-right">
                   <span className={p.stock <= p.min_stock ? 'text-red-500 font-semibold' : ''}>
                     {p.stock}
@@ -398,6 +402,18 @@ export default function ProductsPage(): JSX.Element {
                   onChange={(e) => updateForm('cost_usd', e.target.value)}
                 />
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="is_by_weight"
+                checked={form.is_by_weight}
+                onChange={(e) => setForm((f) => ({ ...f, is_by_weight: e.target.checked }))}
+                className="h-4 w-4 rounded border-input"
+              />
+              <Label htmlFor="is_by_weight" className="cursor-pointer">
+                Precio por peso (kg)
+              </Label>
             </div>
             <div className="space-y-2">
               <Label>Categoria</Label>
