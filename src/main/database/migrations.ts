@@ -160,4 +160,24 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 5')
   }
+
+  if (version < 6) {
+    // Recreate invoice_items with nullable product_id for custom items
+    db.exec(`
+      CREATE TABLE invoice_items_new (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id  INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        product_id  INTEGER REFERENCES products(id) ON DELETE RESTRICT,
+        product_name TEXT NOT NULL,
+        quantity    REAL NOT NULL,
+        unit_price  REAL NOT NULL,
+        subtotal    REAL NOT NULL
+      );
+      INSERT INTO invoice_items_new SELECT * FROM invoice_items;
+      DROP TABLE invoice_items;
+      ALTER TABLE invoice_items_new RENAME TO invoice_items;
+      CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id);
+    `)
+    db.pragma('user_version = 6')
+  }
 }

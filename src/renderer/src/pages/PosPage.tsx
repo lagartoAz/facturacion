@@ -26,7 +26,8 @@ import {
   Package,
   Printer,
   CheckCircle2,
-  UserCheck
+  UserCheck,
+  PlusCircle
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -47,6 +48,7 @@ interface CartItem {
   quantity: number
   stock: number
   isByWeight: boolean
+  isCustom?: boolean
 }
 
 interface CompletedInvoice {
@@ -76,6 +78,9 @@ export default function PosPage(): JSX.Element {
   const [weightDialogOpen, setWeightDialogOpen] = useState(false)
   const [weightInput, setWeightInput] = useState('')
   const [pendingWeightProduct, setPendingWeightProduct] = useState<Product | null>(null)
+  const [customDialogOpen, setCustomDialogOpen] = useState(false)
+  const [customAmount, setCustomAmount] = useState('')
+  const [customNote, setCustomNote] = useState('')
   const [searchResults, setSearchResults] = useState<Product[]>([])
   const [customers, setCustomers] = useState<{ id: number; name: string }[]>([])
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
@@ -143,6 +148,27 @@ export default function PosPage(): JSX.Element {
         }
       ]
     })
+  }
+
+  function handleAddCustom(): void {
+    const amount = parseFloat(customAmount)
+    if (isNaN(amount) || amount <= 0 || !customNote.trim()) return
+    setCart((prev) => [
+      ...prev,
+      {
+        productId: 0,
+        productName: customNote.trim(),
+        unitPrice: amount,
+        quantity: 1,
+        stock: 9999,
+        isByWeight: false,
+        isCustom: true
+      }
+    ])
+    setCustomDialogOpen(false)
+    setCustomAmount('')
+    setCustomNote('')
+    barcodeInputRef.current?.focus()
   }
 
   function handleConfirmWeight(): void {
@@ -232,7 +258,8 @@ export default function PosPage(): JSX.Element {
           productId: item.productId,
           productName: item.productName,
           quantity: item.quantity,
-          unitPrice: item.unitPrice
+          unitPrice: item.unitPrice,
+          isCustom: item.isCustom || false
         })),
         paymentMethod
       })
@@ -342,16 +369,21 @@ export default function PosPage(): JSX.Element {
             <div className="space-y-2">
               {cart.map((item, idx) => (
                 <div
-                  key={item.isByWeight ? `${item.productId}-${idx}` : item.productId}
+                  key={item.isCustom || item.isByWeight ? `custom-${idx}` : item.productId}
                   className="flex items-center gap-3 p-3 border rounded-lg"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{item.productName}</p>
                     <p className="text-sm text-muted-foreground">
-                      {formatUSD(item.unitPrice)}{item.isByWeight ? '/kg' : ' c/u'}
+                      {item.isCustom ? 'Ingreso personalizado' : `${formatUSD(item.unitPrice)}${item.isByWeight ? '/kg' : ' c/u'}`}
                     </p>
                   </div>
-                  {item.isByWeight ? (
+                  {item.isCustom ? (
+                    <span className="text-sm font-medium text-blue-500">
+                      <PlusCircle className="h-4 w-4 inline mr-1" />
+                      1
+                    </span>
+                  ) : item.isByWeight ? (
                     <span className="text-sm font-medium">{item.quantity.toFixed(3)} kg</span>
                   ) : (
                     <div className="flex items-center gap-1">
@@ -381,7 +413,7 @@ export default function PosPage(): JSX.Element {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7"
-                    onClick={() => item.isByWeight ? setCart(prev => prev.filter((_, i) => i !== idx)) : removeFromCart(item.productId)}
+                    onClick={() => (item.isByWeight || item.isCustom) ? setCart(prev => prev.filter((_, i) => i !== idx)) : removeFromCart(item.productId)}
                   >
                     <Trash2 className="h-3 w-3 text-red-500" />
                   </Button>
@@ -454,6 +486,16 @@ export default function PosPage(): JSX.Element {
             />
           </div>
         </div>
+
+        {/* Custom income button */}
+        <Button
+          variant="outline"
+          className="mb-4 w-full"
+          onClick={() => setCustomDialogOpen(true)}
+        >
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Ingreso Personalizado
+        </Button>
 
         {/* Search results / product list */}
         <div className="flex-1 overflow-auto space-y-1">
@@ -658,6 +700,49 @@ export default function PosPage(): JSX.Element {
               Cancelar
             </Button>
             <Button onClick={handleConfirmWeight} disabled={!weightInput || isNaN(parseFloat(weightInput)) || parseFloat(weightInput) <= 0}>
+              Agregar al Carrito
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Custom Income Dialog */}
+      <Dialog open={customDialogOpen} onOpenChange={setCustomDialogOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Ingreso Personalizado</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Descripcion</label>
+              <Input
+                placeholder="Ej: Servicio de reparacion"
+                value={customNote}
+                onChange={(e) => setCustomNote(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Monto (USD)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={customAmount}
+                onChange={(e) => setCustomAmount(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddCustom() }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCustomDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleAddCustom}
+              disabled={!customNote.trim() || !customAmount || isNaN(parseFloat(customAmount)) || parseFloat(customAmount) <= 0}
+            >
               Agregar al Carrito
             </Button>
           </DialogFooter>

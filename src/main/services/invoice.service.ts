@@ -2,10 +2,11 @@ import type Database from 'better-sqlite3'
 import { SettingsService } from './settings.service'
 
 export interface InvoiceItem {
-  productId: number
+  productId?: number
   productName: string
   quantity: number
   unitPrice: number
+  isCustom?: boolean
 }
 
 export interface CreateInvoiceDTO {
@@ -115,15 +116,17 @@ export class InvoiceService {
       for (const item of data.items) {
         insertItem.run(
           invoiceId,
-          item.productId,
+          item.isCustom ? null : item.productId,
           item.productName,
           item.quantity,
           item.unitPrice,
           item.quantity * item.unitPrice
         )
-        const stockResult = decrementStock.run(item.quantity, item.productId, item.quantity)
-        if (stockResult.changes === 0) {
-          throw new Error(`Stock insuficiente para: ${item.productName}`)
+        if (!item.isCustom && item.productId) {
+          const stockResult = decrementStock.run(item.quantity, item.productId, item.quantity)
+          if (stockResult.changes === 0) {
+            throw new Error(`Stock insuficiente para: ${item.productName}`)
+          }
         }
       }
 
@@ -193,7 +196,9 @@ export class InvoiceService {
       )
 
       for (const item of items) {
-        restoreStock.run(item.quantity, item.product_id)
+        if (item.product_id) {
+          restoreStock.run(item.quantity, item.product_id)
+        }
       }
 
       // Mark as voided
