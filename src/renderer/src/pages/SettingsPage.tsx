@@ -141,6 +141,10 @@ export default function SettingsPage(): JSX.Element {
         </CardContent>
       </Card>
 
+      <div className="text-center text-sm text-muted-foreground pt-4">
+        App desarrollada por El Garaje Gamer
+      </div>
+
       {saved && (
         <div className="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-md shadow-lg">
           Guardado correctamente
