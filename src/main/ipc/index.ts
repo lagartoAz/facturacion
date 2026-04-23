@@ -4,6 +4,7 @@ import { registerCustomerHandlers } from './customers.ipc'
 import { registerInvoiceHandlers } from './invoices.ipc'
 import { registerReportHandlers } from './reports.ipc'
 import { registerSettingsHandlers } from './settings.ipc'
+import { registerCashRegisterHandlers } from './cash-register.ipc'
 
 export function registerAllHandlers(db: Database.Database): void {
   registerProductHandlers(db)
@@ -11,4 +12,5 @@ export function registerAllHandlers(db: Database.Database): void {
   registerInvoiceHandlers(db)
   registerReportHandlers(db)
   registerSettingsHandlers(db)
+  registerCashRegisterHandlers(db)
 }

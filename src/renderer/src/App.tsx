@@ -6,6 +6,7 @@ import ProductsPage from './pages/ProductsPage'
 import CustomersPage from './pages/CustomersPage'
 import InvoicesPage from './pages/InvoicesPage'
 import ReportsPage from './pages/ReportsPage'
+import CashRegisterPage from './pages/CashRegisterPage'
 import SettingsPage from './pages/SettingsPage'
 
 export default function App(): JSX.Element {
@@ -17,6 +18,7 @@ export default function App(): JSX.Element {
         <Route path="/products" element={<ProductsPage />} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />
+        <Route path="/cash-register" element={<CashRegisterPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

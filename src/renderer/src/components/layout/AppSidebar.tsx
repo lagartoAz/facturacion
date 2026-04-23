@@ -6,7 +6,8 @@ import {
   Users,
   FileText,
   BarChart3,
-  Settings
+  Settings,
+  Landmark
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +17,7 @@ const navItems = [
   { to: '/products', label: 'Productos', icon: Package },
   { to: '/customers', label: 'Clientes', icon: Users },
   { to: '/invoices', label: 'Facturas', icon: FileText },
+  { to: '/cash-register', label: 'Caja', icon: Landmark },
   { to: '/reports', label: 'Reportes', icon: BarChart3 },
   { to: '/settings', label: 'Configuracion', icon: Settings }
 ]

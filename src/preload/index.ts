@@ -71,7 +71,17 @@ const api = {
   getSetting: (key: string) => ipcRenderer.invoke('settings:get', key),
   setSetting: (key: string, value: string) =>
     ipcRenderer.invoke('settings:set', key, value),
-  getAllSettings: () => ipcRenderer.invoke('settings:getAll')
+  getAllSettings: () => ipcRenderer.invoke('settings:getAll'),
+
+  // Cash Register
+  getCashRegister: () => ipcRenderer.invoke('cash-register:getCurrent'),
+  openCashRegister: (amount: number, notes?: string) =>
+    ipcRenderer.invoke('cash-register:open', amount, notes),
+  closeCashRegister: (countedAmount: number, notes?: string) =>
+    ipcRenderer.invoke('cash-register:close', countedAmount, notes),
+  getCashRegisterHistory: () => ipcRenderer.invoke('cash-register:getHistory'),
+  getCashRegisterSales: (openedAt: string) =>
+    ipcRenderer.invoke('cash-register:getSales', openedAt)
 }
 
 contextBridge.exposeInMainWorld('api', api)

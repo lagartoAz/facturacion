@@ -137,4 +137,27 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 4')
   }
+
+  if (version < 5) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS cash_register (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        opening_amount  REAL NOT NULL DEFAULT 0,
+        opening_notes   TEXT,
+        closing_amount  REAL,
+        closing_notes   TEXT,
+        sales_cash      REAL DEFAULT 0,
+        sales_card      REAL DEFAULT 0,
+        sales_transfer  REAL DEFAULT 0,
+        sales_credit    REAL DEFAULT 0,
+        total_invoices  INTEGER DEFAULT 0,
+        expected_cash   REAL,
+        difference      REAL,
+        status          TEXT NOT NULL DEFAULT 'open',
+        opened_at       TEXT NOT NULL DEFAULT (datetime('now')),
+        closed_at       TEXT
+      );
+    `)
+    db.pragma('user_version = 5')
+  }
 }
