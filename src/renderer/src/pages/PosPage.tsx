@@ -25,7 +25,8 @@ import {
   ArrowRightLeft,
   Package,
   Printer,
-  CheckCircle2
+  CheckCircle2,
+  UserCheck
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -220,6 +221,10 @@ export default function PosPage(): JSX.Element {
   const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
 
   async function handleConfirmPayment(): Promise<void> {
+    if (paymentMethod === 'credit' && !selectedCustomerId) {
+      showNotification('Debe seleccionar un cliente para pago a credito')
+      return
+    }
     try {
       const invoice = await window.api.createInvoice({
         customerId: selectedCustomerId || undefined,
@@ -511,11 +516,12 @@ export default function PosPage(): JSX.Element {
             <Separator />
             <div className="space-y-2">
               <p className="text-sm font-medium">Metodo de Pago</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {[
                   { value: 'cash', label: 'Efectivo', icon: DollarSign },
                   { value: 'card', label: 'Tarjeta', icon: CreditCard },
-                  { value: 'transfer', label: 'Transfer', icon: ArrowRightLeft }
+                  { value: 'transfer', label: 'Transfer', icon: ArrowRightLeft },
+                  { value: 'credit', label: 'Credito', icon: UserCheck }
                 ].map((method) => (
                   <Button
                     key={method.value}

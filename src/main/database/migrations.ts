@@ -123,4 +123,18 @@ export function runMigrations(db: Database.Database): void {
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('tax_percent', '0')").run()
     db.pragma('user_version = 3')
   }
+
+  if (version < 4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS customer_payments (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        amount_usd  REAL NOT NULL CHECK (amount_usd > 0),
+        notes       TEXT,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_customer_payments_customer ON customer_payments(customer_id);
+    `)
+    db.pragma('user_version = 4')
+  }
 }

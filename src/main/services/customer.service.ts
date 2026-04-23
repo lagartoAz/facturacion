@@ -81,4 +81,56 @@ export class CustomerService {
   delete(id: number): void {
     this.db.prepare('DELETE FROM customers WHERE id = ?').run(id)
   }
+
+  getBalance(customerId: number): number {
+    const creditTotal = (this.db.prepare(
+      "SELECT COALESCE(SUM(total_usd), 0) as total FROM invoices WHERE customer_id = ? AND payment_method = 'credit' AND status = 'completed'"
+    ).get(customerId) as { total: number }).total
+
+    const paymentsTotal = (this.db.prepare(
+      'SELECT COALESCE(SUM(amount_usd), 0) as total FROM customer_payments WHERE customer_id = ?'
+    ).get(customerId) as { total: number }).total
+
+    return Math.max(0, creditTotal - paymentsTotal)
+  }
+
+  getBalances(): Record<number, number> {
+    const credits = this.db.prepare(
+      "SELECT customer_id, COALESCE(SUM(total_usd), 0) as total FROM invoices WHERE payment_method = 'credit' AND status = 'completed' AND customer_id IS NOT NULL GROUP BY customer_id"
+    ).all() as { customer_id: number; total: number }[]
+
+    const payments = this.db.prepare(
+      'SELECT customer_id, COALESCE(SUM(amount_usd), 0) as total FROM customer_payments GROUP BY customer_id'
+    ).all() as { customer_id: number; total: number }[]
+
+    const paymentMap = new Map(payments.map(p => [p.customer_id, p.total]))
+    const result: Record<number, number> = {}
+
+    for (const c of credits) {
+      const balance = c.total - (paymentMap.get(c.customer_id) ?? 0)
+      if (balance > 0) {
+        result[c.customer_id] = balance
+      }
+    }
+
+    return result
+  }
+
+  getCreditInvoices(customerId: number): { id: number; invoice_number: string; total_usd: number; created_at: string }[] {
+    return this.db.prepare(
+      "SELECT id, invoice_number, total_usd, created_at FROM invoices WHERE customer_id = ? AND payment_method = 'credit' AND status = 'completed' ORDER BY created_at DESC"
+    ).all(customerId) as { id: number; invoice_number: string; total_usd: number; created_at: string }[]
+  }
+
+  addPayment(customerId: number, amount: number, notes?: string): void {
+    this.db.prepare(
+      'INSERT INTO customer_payments (customer_id, amount_usd, notes) VALUES (?, ?, ?)'
+    ).run(customerId, amount, notes || null)
+  }
+
+  getPayments(customerId: number): { id: number; amount_usd: number; notes: string | null; created_at: string }[] {
+    return this.db.prepare(
+      'SELECT id, amount_usd, notes, created_at FROM customer_payments WHERE customer_id = ? ORDER BY created_at DESC'
+    ).all(customerId) as { id: number; amount_usd: number; notes: string | null; created_at: string }[]
+  }
 }

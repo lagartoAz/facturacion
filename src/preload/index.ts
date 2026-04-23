@@ -33,6 +33,16 @@ const api = {
     ipcRenderer.invoke('customers:update', id, data),
   deleteCustomer: (id: number) =>
     ipcRenderer.invoke('customers:delete', id),
+  getCustomerBalance: (id: number) =>
+    ipcRenderer.invoke('customers:getBalance', id),
+  getCustomerBalances: () =>
+    ipcRenderer.invoke('customers:getBalances'),
+  getCustomerCreditInvoices: (id: number) =>
+    ipcRenderer.invoke('customers:getCreditInvoices', id),
+  addCustomerPayment: (id: number, amount: number, notes?: string) =>
+    ipcRenderer.invoke('customers:addPayment', id, amount, notes),
+  getCustomerPayments: (id: number) =>
+    ipcRenderer.invoke('customers:getPayments', id),
 
   // Invoices
   createInvoice: (data: Record<string, unknown>) =>

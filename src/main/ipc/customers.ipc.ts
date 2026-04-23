@@ -21,4 +21,24 @@ export function registerCustomerHandlers(db: Database.Database): void {
   ipcMain.handle('customers:delete', (_event, id: number) => {
     service.delete(id)
   })
+
+  ipcMain.handle('customers:getBalance', (_event, id: number) => {
+    return service.getBalance(id)
+  })
+
+  ipcMain.handle('customers:getBalances', () => {
+    return service.getBalances()
+  })
+
+  ipcMain.handle('customers:getCreditInvoices', (_event, id: number) => {
+    return service.getCreditInvoices(id)
+  })
+
+  ipcMain.handle('customers:addPayment', (_event, id: number, amount: number, notes?: string) => {
+    return service.addPayment(id, amount, notes)
+  })
+
+  ipcMain.handle('customers:getPayments', (_event, id: number) => {
+    return service.getPayments(id)
+  })
 }
