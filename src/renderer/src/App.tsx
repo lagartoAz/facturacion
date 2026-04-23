@@ -22,6 +22,7 @@ export default function App(): JSX.Element {
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
+      <Route path="/pos-window" element={<PosPage />} />
     </Routes>
   )
 }

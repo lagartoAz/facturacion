@@ -13,7 +13,6 @@ import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/pos', label: 'Punto de Venta', icon: ShoppingCart },
   { to: '/products', label: 'Productos', icon: Package },
   { to: '/customers', label: 'Clientes', icon: Users },
   { to: '/invoices', label: 'Facturas', icon: FileText },
@@ -30,6 +29,16 @@ export function AppSidebar(): JSX.Element {
         <span className="font-semibold text-sidebar-foreground">Facturacion</span>
       </div>
       <nav className="flex-1 space-y-1 p-2">
+        <button
+          onClick={() => window.api.openPosWindow()}
+          className={cn(
+            'flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+            'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+          )}
+        >
+          <ShoppingCart className="h-4 w-4" />
+          Punto de Venta
+        </button>
         {navItems.map((item) => (
           <NavLink
             key={item.to}

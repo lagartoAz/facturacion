@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -72,6 +73,9 @@ interface ExchangeRate {
 }
 
 export default function PosPage(): JSX.Element {
+  const location = useLocation()
+  const isStandaloneWindow = location.pathname === '/pos-window'
+
   const [cart, setCart] = useState<CartItem[]>([])
   const [rates, setRates] = useState<ExchangeRate[]>([])
   const [searchQuery, setSearchQuery] = useState('')
@@ -94,6 +98,20 @@ export default function PosPage(): JSX.Element {
   useEffect(() => {
     loadInitialData()
   }, [])
+
+  // Prevent accidental close with unsaved cart in standalone window
+  const cartRef = useRef(cart)
+  cartRef.current = cart
+  useEffect(() => {
+    if (!isStandaloneWindow) return
+    const handleBeforeUnload = (e: BeforeUnloadEvent): void => {
+      if (cartRef.current.length > 0) {
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isStandaloneWindow])
 
   async function loadInitialData(): Promise<void> {
     const [ratesData, customersData] = await Promise.all([
@@ -272,6 +290,13 @@ export default function PosPage(): JSX.Element {
       setSelectedCustomerId(null)
       setPaymentDialogOpen(false)
       setPaymentMethod('cash')
+
+      if (isStandaloneWindow) {
+        // In standalone mode, close the window after sale
+        window.close()
+        return
+      }
+
       setSuccessDialogOpen(true)
 
       // Reload rates in case they changed
@@ -338,7 +363,7 @@ export default function PosPage(): JSX.Element {
   }
 
   return (
-    <div className="flex h-full">
+    <div className={`flex ${isStandaloneWindow ? 'h-screen' : 'h-full'}`}>
       {/* Left panel - Cart */}
       <div className="flex-1 flex flex-col p-4 border-r">
         {/* Customer selector */}

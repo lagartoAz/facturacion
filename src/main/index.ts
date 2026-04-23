@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDatabase } from './database/connection'
@@ -35,6 +35,29 @@ function createWindow(): void {
   }
 }
 
+function createPosWindow(): void {
+  const posWindow = new BrowserWindow({
+    width: 900,
+    height: 700,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.mjs'),
+      sandbox: false
+    }
+  })
+
+  posWindow.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url)
+    return { action: 'deny' }
+  })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    posWindow.loadURL(process.env['ELECTRON_RENDERER_URL'] + '/#/pos-window')
+  } else {
+    posWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: '/pos-window' })
+  }
+}
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.facturacion')
 
@@ -48,6 +71,11 @@ app.whenReady().then(() => {
 
   // Register IPC handlers
   registerAllHandlers(db)
+
+  // Window management
+  ipcMain.handle('window:openPos', () => {
+    createPosWindow()
+  })
 
   createWindow()
 

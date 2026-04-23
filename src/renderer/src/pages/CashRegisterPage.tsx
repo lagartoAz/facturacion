@@ -22,7 +22,8 @@ import {
   UserCheck,
   Lock,
   Unlock,
-  Clock
+  Clock,
+  Pencil
 } from 'lucide-react'
 
 interface CashRegister {
@@ -73,6 +74,14 @@ export default function CashRegisterPage(): JSX.Element {
   const [closeVes, setCloseVes] = useState('')
   const [closeCop, setCloseCop] = useState('')
   const [closeNotes, setCloseNotes] = useState('')
+
+  // Edit dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editingRegister, setEditingRegister] = useState<CashRegister | null>(null)
+  const [editUsd, setEditUsd] = useState('')
+  const [editVes, setEditVes] = useState('')
+  const [editCop, setEditCop] = useState('')
+  const [editNotes, setEditNotes] = useState('')
 
   // Notification
   const [notification, setNotification] = useState('')
@@ -148,6 +157,35 @@ export default function CashRegisterPage(): JSX.Element {
     setCloseCop('')
     setCloseNotes('')
     setCloseDialogOpen(true)
+  }
+
+  function openEditDialog(register: CashRegister): void {
+    setEditingRegister(register)
+    setEditUsd(String(register.closing_amount ?? 0))
+    setEditVes(String(register.closing_amount_ves ?? 0))
+    setEditCop(String(register.closing_amount_cop ?? 0))
+    setEditNotes(register.closing_notes ?? '')
+    setEditDialogOpen(true)
+  }
+
+  async function handleEdit(): Promise<void> {
+    if (!editingRegister) return
+    const usd = parseFloat(editUsd) || 0
+    const ves = parseFloat(editVes) || 0
+    const cop = parseFloat(editCop) || 0
+    if (usd < 0 || ves < 0 || cop < 0) {
+      showNotification('Los montos no pueden ser negativos')
+      return
+    }
+    try {
+      await window.api.updateCashRegister(editingRegister.id, { usd, ves, cop }, editNotes || undefined)
+      setEditDialogOpen(false)
+      setEditingRegister(null)
+      await loadData()
+      showNotification('Caja actualizada exitosamente')
+    } catch (err) {
+      showNotification(`Error: ${(err as Error).message}`)
+    }
   }
 
   function showNotification(msg: string): void {
@@ -368,6 +406,7 @@ export default function CashRegisterPage(): JSX.Element {
                     <th className="text-right p-3 font-medium">Ventas</th>
                     <th className="text-right p-3 font-medium">Facturas</th>
                     <th className="text-right p-3 font-medium">Diferencia USD</th>
+                    <th className="text-center p-3 font-medium"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -381,6 +420,11 @@ export default function CashRegisterPage(): JSX.Element {
                         <td className="p-3 text-right">{reg.total_invoices}</td>
                         <td className={`p-3 text-right font-medium ${reg.difference != null ? (reg.difference < 0 ? 'text-red-500' : reg.difference > 0 ? 'text-green-500' : '') : ''}`}>
                           {reg.difference != null ? (reg.difference >= 0 ? '+' : '') + formatUSD(reg.difference) : '-'}
+                        </td>
+                        <td className="p-3 text-center">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(reg)}>
+                            <Pencil className="h-3 w-3" />
+                          </Button>
                         </td>
                       </tr>
                     )
@@ -523,6 +567,109 @@ export default function CashRegisterPage(): JSX.Element {
             </Button>
             <Button variant="destructive" onClick={handleClose}>
               Confirmar Cierre
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Cierre de Caja</DialogTitle>
+          </DialogHeader>
+          {editingRegister && (
+            <div className="space-y-4">
+              <div className="space-y-2 text-sm bg-muted/50 p-3 rounded">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Apertura:</span>
+                  <span>{format(new Date(editingRegister.opened_at), 'dd/MM/yyyy HH:mm')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Apertura USD:</span>
+                  <span>{formatUSD(editingRegister.opening_amount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Ventas efectivo:</span>
+                  <span>{formatUSD(editingRegister.sales_cash)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between font-bold">
+                  <span>Efectivo USD esperado:</span>
+                  <span>{formatUSD(editingRegister.opening_amount + editingRegister.sales_cash)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-sm font-medium">Efectivo contado en caja</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Dolares (USD)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={editUsd}
+                      onChange={(e) => setEditUsd(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Bolivares (VES)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={editVes}
+                      onChange={(e) => setEditVes(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Pesos (COP)</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder="0"
+                      value={editCop}
+                      onChange={(e) => setEditCop(e.target.value)}
+                    />
+                  </div>
+                </div>
+                {editUsd && !isNaN(parseFloat(editUsd)) && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Diferencia USD: </span>
+                    {(() => {
+                      const diff = parseFloat(editUsd) - (editingRegister.opening_amount + editingRegister.sales_cash)
+                      return (
+                        <span className={`font-medium ${diff < 0 ? 'text-red-500' : diff > 0 ? 'text-green-500' : ''}`}>
+                          {diff >= 0 ? '+' : ''}{formatUSD(diff)}
+                          {diff < 0 ? ' (Faltante)' : diff > 0 ? ' (Sobrante)' : ' (Cuadra)'}
+                        </span>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Notas (opcional)</Label>
+                <Input
+                  placeholder="Observaciones..."
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEdit}>
+              Guardar Cambios
             </Button>
           </DialogFooter>
         </DialogContent>

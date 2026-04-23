@@ -81,7 +81,12 @@ const api = {
     ipcRenderer.invoke('cash-register:close', countedAmounts, notes),
   getCashRegisterHistory: () => ipcRenderer.invoke('cash-register:getHistory'),
   getCashRegisterSales: (openedAt: string) =>
-    ipcRenderer.invoke('cash-register:getSales', openedAt)
+    ipcRenderer.invoke('cash-register:getSales', openedAt),
+  updateCashRegister: (id: number, amounts: { usd: number; ves: number; cop: number }, notes?: string) =>
+    ipcRenderer.invoke('cash-register:update', id, amounts, notes),
+
+  // Window management
+  openPosWindow: () => ipcRenderer.invoke('window:openPos')
 }
 
 contextBridge.exposeInMainWorld('api', api)

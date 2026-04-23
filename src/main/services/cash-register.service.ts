@@ -116,6 +116,35 @@ export class CashRegisterService {
       .all() as CashRegister[]
   }
 
+  update(id: number, amounts: CloseAmounts, notes?: string): CashRegister {
+    const register = this.db
+      .prepare('SELECT * FROM cash_register WHERE id = ?')
+      .get(id) as CashRegister | undefined
+
+    if (!register) {
+      throw new Error('Registro de caja no encontrado')
+    }
+    if (register.status !== 'closed') {
+      throw new Error('Solo se pueden editar cajas cerradas')
+    }
+
+    const expectedCash = register.opening_amount + register.sales_cash
+    const newDifference = amounts.usd - expectedCash
+
+    this.db
+      .prepare(
+        `UPDATE cash_register SET
+          closing_amount = ?, closing_amount_ves = ?, closing_amount_cop = ?,
+          closing_notes = ?, difference = ?
+        WHERE id = ?`
+      )
+      .run(amounts.usd, amounts.ves, amounts.cop, notes || null, newDifference, id)
+
+    return this.db
+      .prepare('SELECT * FROM cash_register WHERE id = ?')
+      .get(id) as CashRegister
+  }
+
   getSalesForSession(openedAt: string): SalesByMethod {
     const rows = this.db
       .prepare(

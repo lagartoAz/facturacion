@@ -24,4 +24,11 @@ export function registerCashRegisterHandlers(db: Database.Database): void {
   ipcMain.handle('cash-register:getSales', (_event, openedAt: string) => {
     return service.getSalesForSession(openedAt)
   })
+
+  ipcMain.handle(
+    'cash-register:update',
+    (_event, id: number, amounts: CloseAmounts, notes?: string) => {
+      return service.update(id, amounts, notes)
+    }
+  )
 }
