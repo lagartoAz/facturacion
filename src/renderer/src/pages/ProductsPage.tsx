@@ -234,7 +234,7 @@ export default function ProductsPage(): JSX.Element {
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <span><strong className="text-foreground">{products.length}</strong> productos</span>
           <span><strong className="text-foreground">{products.reduce((sum, p) => sum + (p.is_by_weight ? 0 : p.stock), 0)}</strong> unidades</span>
-          <span>Valor: <strong className="text-foreground">{formatUSD(products.reduce((sum, p) => sum + p.price_usd * (p.is_by_weight ? 0 : p.stock), 0))}</strong></span>
+          <span>Invertido: <strong className="text-foreground">{formatUSD(products.reduce((sum, p) => sum + p.cost_usd * (p.is_by_weight ? 0 : p.stock), 0))}</strong></span>
         </div>
       </div>
 
