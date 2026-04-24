@@ -221,14 +221,21 @@ export default function ProductsPage(): JSX.Element {
         </Button>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-        <Input
-          className="pl-9"
-          placeholder="Buscar por nombre o codigo..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Buscar por nombre o codigo..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <span><strong className="text-foreground">{products.length}</strong> productos</span>
+          <span><strong className="text-foreground">{products.reduce((sum, p) => sum + (p.is_by_weight ? 0 : p.stock), 0)}</strong> unidades</span>
+          <span>Valor: <strong className="text-foreground">{formatUSD(products.reduce((sum, p) => sum + p.price_usd * (p.is_by_weight ? 0 : p.stock), 0))}</strong></span>
+        </div>
       </div>
 
       <div className="border rounded-lg overflow-hidden">

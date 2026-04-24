@@ -23,7 +23,8 @@ import {
   Lock,
   Unlock,
   Clock,
-  Pencil
+  Pencil,
+  ArrowDownToLine
 } from 'lucide-react'
 
 interface CashRegister {
@@ -56,10 +57,19 @@ interface SessionSales {
   count: number
 }
 
+interface Withdrawal {
+  id: number
+  cash_register_id: number
+  amount: number
+  reason: string
+  created_at: string
+}
+
 export default function CashRegisterPage(): JSX.Element {
   const [currentRegister, setCurrentRegister] = useState<CashRegister | null>(null)
   const [history, setHistory] = useState<CashRegister[]>([])
   const [sessionSales, setSessionSales] = useState<SessionSales | null>(null)
+  const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([])
   const [loading, setLoading] = useState(true)
 
   // Open form
@@ -78,10 +88,16 @@ export default function CashRegisterPage(): JSX.Element {
   // Edit dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingRegister, setEditingRegister] = useState<CashRegister | null>(null)
+  const [editWithdrawals, setEditWithdrawals] = useState<Withdrawal[]>([])
   const [editUsd, setEditUsd] = useState('')
   const [editVes, setEditVes] = useState('')
   const [editCop, setEditCop] = useState('')
   const [editNotes, setEditNotes] = useState('')
+
+  // Withdrawal dialog
+  const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false)
+  const [withdrawalAmount, setWithdrawalAmount] = useState('')
+  const [withdrawalReason, setWithdrawalReason] = useState('')
 
   // Notification
   const [notification, setNotification] = useState('')
@@ -100,10 +116,15 @@ export default function CashRegisterPage(): JSX.Element {
     setHistory(hist)
 
     if (register) {
-      const sales = await window.api.getCashRegisterSales(register.opened_at)
+      const [sales, w] = await Promise.all([
+        window.api.getCashRegisterSales(register.opened_at),
+        window.api.getCashRegisterWithdrawals(register.id)
+      ])
       setSessionSales(sales)
+      setWithdrawals(w)
     } else {
       setSessionSales(null)
+      setWithdrawals([])
     }
     setLoading(false)
   }
@@ -159,12 +180,14 @@ export default function CashRegisterPage(): JSX.Element {
     setCloseDialogOpen(true)
   }
 
-  function openEditDialog(register: CashRegister): void {
+  async function openEditDialog(register: CashRegister): Promise<void> {
     setEditingRegister(register)
     setEditUsd(String(register.closing_amount ?? 0))
     setEditVes(String(register.closing_amount_ves ?? 0))
     setEditCop(String(register.closing_amount_cop ?? 0))
     setEditNotes(register.closing_notes ?? '')
+    const w = await window.api.getCashRegisterWithdrawals(register.id)
+    setEditWithdrawals(w)
     setEditDialogOpen(true)
   }
 
@@ -188,6 +211,29 @@ export default function CashRegisterPage(): JSX.Element {
     }
   }
 
+  async function handleWithdrawal(): Promise<void> {
+    if (!currentRegister) return
+    const amount = parseFloat(withdrawalAmount)
+    if (!amount || amount <= 0) {
+      showNotification('El monto debe ser mayor a 0')
+      return
+    }
+    if (!withdrawalReason.trim()) {
+      showNotification('Debe indicar la razon del retiro')
+      return
+    }
+    try {
+      await window.api.addCashRegisterWithdrawal(currentRegister.id, amount, withdrawalReason.trim())
+      setWithdrawalDialogOpen(false)
+      setWithdrawalAmount('')
+      setWithdrawalReason('')
+      await loadData()
+      showNotification('Retiro registrado exitosamente')
+    } catch (err) {
+      showNotification(`Error: ${(err as Error).message}`)
+    }
+  }
+
   function showNotification(msg: string): void {
     setNotification(msg)
     setTimeout(() => setNotification(''), 3000)
@@ -204,6 +250,8 @@ export default function CashRegisterPage(): JSX.Element {
   const salesTotal = sessionSales
     ? sessionSales.cash + sessionSales.card + sessionSales.transfer + sessionSales.credit
     : 0
+
+  const totalWithdrawals = withdrawals.reduce((sum, w) => sum + w.amount, 0)
 
   return (
     <div className="p-6 space-y-6 max-w-3xl">
@@ -369,6 +417,34 @@ export default function CashRegisterPage(): JSX.Element {
             </Card>
           </div>
 
+          {/* Withdrawals list */}
+          {withdrawals.length > 0 && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <ArrowDownToLine className="h-4 w-4" />
+                  Retiros del turno
+                </CardTitle>
+                <span className="text-sm font-bold text-orange-500">-{formatUSD(totalWithdrawals)}</span>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {withdrawals.map((w) => (
+                    <div key={w.id} className="flex justify-between items-start text-sm border-b pb-2 last:border-0 last:pb-0">
+                      <div>
+                        <p className="font-medium">{w.reason}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(w.created_at), 'HH:mm')}
+                        </p>
+                      </div>
+                      <span className="text-orange-500 font-medium">-{formatUSD(w.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardContent className="pt-6">
               <div className="flex justify-between items-center">
@@ -376,11 +452,28 @@ export default function CashRegisterPage(): JSX.Element {
                   <p className="text-sm text-muted-foreground">Total ventas del turno</p>
                   <p className="text-3xl font-bold">{formatUSD(salesTotal)}</p>
                   <p className="text-sm text-muted-foreground mt-1">{sessionSales.count} facturas</p>
+                  {totalWithdrawals > 0 && (
+                    <p className="text-sm text-orange-500 mt-1">Retiros: -{formatUSD(totalWithdrawals)}</p>
+                  )}
                 </div>
-                <Button onClick={openCloseDialog} variant="destructive" size="lg">
-                  <Lock className="mr-2 h-4 w-4" />
-                  Cerrar Caja
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      setWithdrawalAmount('')
+                      setWithdrawalReason('')
+                      setWithdrawalDialogOpen(true)
+                    }}
+                    variant="outline"
+                    size="lg"
+                  >
+                    <ArrowDownToLine className="mr-2 h-4 w-4" />
+                    Retiro
+                  </Button>
+                  <Button onClick={openCloseDialog} variant="destructive" size="lg">
+                    <Lock className="mr-2 h-4 w-4" />
+                    Cerrar Caja
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -436,6 +529,45 @@ export default function CashRegisterPage(): JSX.Element {
         </Card>
       )}
 
+      {/* Withdrawal Dialog */}
+      <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Retiro de Caja</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Monto (USD)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={withdrawalAmount}
+                onChange={(e) => setWithdrawalAmount(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Razon del retiro</Label>
+              <Input
+                placeholder="Ej: Pago a proveedor, compra de insumos..."
+                value={withdrawalReason}
+                onChange={(e) => setWithdrawalReason(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWithdrawalDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleWithdrawal}>
+              Registrar Retiro
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Close Dialog */}
       <Dialog open={closeDialogOpen} onOpenChange={setCloseDialogOpen}>
         <DialogContent className="max-w-md">
@@ -473,6 +605,27 @@ export default function CashRegisterPage(): JSX.Element {
                 </div>
               </div>
 
+              {/* Withdrawals in close dialog */}
+              {withdrawals.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-2 text-sm">
+                    <p className="font-medium text-orange-500">Retiros</p>
+                    {withdrawals.map((w) => (
+                      <div key={w.id} className="flex justify-between">
+                        <span className="text-muted-foreground">{w.reason}</span>
+                        <span className="text-orange-500">-{formatUSD(w.amount)}</span>
+                      </div>
+                    ))}
+                    <Separator />
+                    <div className="flex justify-between font-medium text-orange-500">
+                      <span>Total retiros</span>
+                      <span>-{formatUSD(totalWithdrawals)}</span>
+                    </div>
+                  </div>
+                </>
+              )}
+
               <Separator />
 
               {/* Expected USD cash */}
@@ -485,10 +638,16 @@ export default function CashRegisterPage(): JSX.Element {
                   <span className="text-muted-foreground">+ Ventas efectivo</span>
                   <span>{formatUSD(sessionSales.cash)}</span>
                 </div>
+                {totalWithdrawals > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-orange-500">- Retiros</span>
+                    <span className="text-orange-500">-{formatUSD(totalWithdrawals)}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between font-bold">
                   <span>Efectivo USD esperado</span>
-                  <span>{formatUSD(currentRegister.opening_amount + sessionSales.cash)}</span>
+                  <span>{formatUSD(currentRegister.opening_amount + sessionSales.cash - totalWithdrawals)}</span>
                 </div>
               </div>
 
@@ -539,7 +698,7 @@ export default function CashRegisterPage(): JSX.Element {
                   <div className="text-sm">
                     <span className="text-muted-foreground">Diferencia USD: </span>
                     {(() => {
-                      const diff = parseFloat(closeUsd) - (currentRegister.opening_amount + sessionSales.cash)
+                      const diff = parseFloat(closeUsd) - (currentRegister.opening_amount + sessionSales.cash - totalWithdrawals)
                       return (
                         <span className={`font-medium ${diff < 0 ? 'text-red-500' : diff > 0 ? 'text-green-500' : ''}`}>
                           {diff >= 0 ? '+' : ''}{formatUSD(diff)}
@@ -593,10 +752,22 @@ export default function CashRegisterPage(): JSX.Element {
                   <span className="text-muted-foreground">Ventas efectivo:</span>
                   <span>{formatUSD(editingRegister.sales_cash)}</span>
                 </div>
+                {editWithdrawals.length > 0 && (
+                  <>
+                    <Separator />
+                    <p className="font-medium text-orange-500">Retiros:</p>
+                    {editWithdrawals.map((w) => (
+                      <div key={w.id} className="flex justify-between">
+                        <span className="text-muted-foreground">{w.reason} ({format(new Date(w.created_at), 'HH:mm')})</span>
+                        <span className="text-orange-500">-{formatUSD(w.amount)}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
                 <Separator />
                 <div className="flex justify-between font-bold">
                   <span>Efectivo USD esperado:</span>
-                  <span>{formatUSD(editingRegister.opening_amount + editingRegister.sales_cash)}</span>
+                  <span>{formatUSD(editingRegister.opening_amount + editingRegister.sales_cash - editWithdrawals.reduce((s, w) => s + w.amount, 0))}</span>
                 </div>
               </div>
 
@@ -642,7 +813,8 @@ export default function CashRegisterPage(): JSX.Element {
                   <div className="text-sm">
                     <span className="text-muted-foreground">Diferencia USD: </span>
                     {(() => {
-                      const diff = parseFloat(editUsd) - (editingRegister.opening_amount + editingRegister.sales_cash)
+                      const editTotalWithdrawals = editWithdrawals.reduce((s, w) => s + w.amount, 0)
+                      const diff = parseFloat(editUsd) - (editingRegister.opening_amount + editingRegister.sales_cash - editTotalWithdrawals)
                       return (
                         <span className={`font-medium ${diff < 0 ? 'text-red-500' : diff > 0 ? 'text-green-500' : ''}`}>
                           {diff >= 0 ? '+' : ''}{formatUSD(diff)}

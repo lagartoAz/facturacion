@@ -190,4 +190,18 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 7')
   }
+
+  if (version < 8) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS cash_register_withdrawals (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        cash_register_id INTEGER NOT NULL REFERENCES cash_register(id) ON DELETE CASCADE,
+        amount           REAL NOT NULL CHECK (amount > 0),
+        reason           TEXT NOT NULL,
+        created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_withdrawals_register ON cash_register_withdrawals(cash_register_id);
+    `)
+    db.pragma('user_version = 8')
+  }
 }

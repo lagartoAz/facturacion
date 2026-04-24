@@ -1,6 +1,10 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
-import { CashRegisterService, OpenAmounts, CloseAmounts } from '../services/cash-register.service'
+import {
+  CashRegisterService,
+  OpenAmounts,
+  CloseAmounts
+} from '../services/cash-register.service'
 
 export function registerCashRegisterHandlers(db: Database.Database): void {
   const service = new CashRegisterService(db)
@@ -31,4 +35,15 @@ export function registerCashRegisterHandlers(db: Database.Database): void {
       return service.update(id, amounts, notes)
     }
   )
+
+  ipcMain.handle(
+    'cash-register:addWithdrawal',
+    (_event, cashRegisterId: number, amount: number, reason: string) => {
+      return service.addWithdrawal(cashRegisterId, amount, reason)
+    }
+  )
+
+  ipcMain.handle('cash-register:getWithdrawals', (_event, cashRegisterId: number) => {
+    return service.getWithdrawals(cashRegisterId)
+  })
 }

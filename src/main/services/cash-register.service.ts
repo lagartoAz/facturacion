@@ -34,6 +34,14 @@ export interface CloseAmounts {
   cop: number
 }
 
+export interface CashRegisterWithdrawal {
+  id: number
+  cash_register_id: number
+  amount: number
+  reason: string
+  created_at: string
+}
+
 interface SalesByMethod {
   cash: number
   card: number
@@ -77,7 +85,8 @@ export class CashRegisterService {
     }
 
     const sales = this.getSalesForSession(current.opened_at)
-    const expectedCash = current.opening_amount + sales.cash
+    const totalWithdrawals = this.getTotalWithdrawals(current.id)
+    const expectedCash = current.opening_amount + sales.cash - totalWithdrawals
     const difference = countedAmounts.usd - expectedCash
 
     this.db
@@ -128,7 +137,8 @@ export class CashRegisterService {
       throw new Error('Solo se pueden editar cajas cerradas')
     }
 
-    const expectedCash = register.opening_amount + register.sales_cash
+    const totalWithdrawals = this.getTotalWithdrawals(register.id)
+    const expectedCash = register.opening_amount + register.sales_cash - totalWithdrawals
     const newDifference = amounts.usd - expectedCash
 
     this.db
@@ -160,5 +170,39 @@ export class CashRegisterService {
       result.count += row.count
     }
     return result
+  }
+
+  addWithdrawal(cashRegisterId: number, amount: number, reason: string): CashRegisterWithdrawal {
+    const register = this.db
+      .prepare('SELECT * FROM cash_register WHERE id = ?')
+      .get(cashRegisterId) as CashRegister | undefined
+
+    if (!register) {
+      throw new Error('Registro de caja no encontrado')
+    }
+    if (register.status !== 'open') {
+      throw new Error('Solo se pueden hacer retiros con la caja abierta')
+    }
+
+    const result = this.db
+      .prepare('INSERT INTO cash_register_withdrawals (cash_register_id, amount, reason) VALUES (?, ?, ?)')
+      .run(cashRegisterId, amount, reason)
+
+    return this.db
+      .prepare('SELECT * FROM cash_register_withdrawals WHERE id = ?')
+      .get(result.lastInsertRowid) as CashRegisterWithdrawal
+  }
+
+  getWithdrawals(cashRegisterId: number): CashRegisterWithdrawal[] {
+    return this.db
+      .prepare('SELECT * FROM cash_register_withdrawals WHERE cash_register_id = ? ORDER BY created_at ASC')
+      .all(cashRegisterId) as CashRegisterWithdrawal[]
+  }
+
+  private getTotalWithdrawals(cashRegisterId: number): number {
+    const result = this.db
+      .prepare('SELECT COALESCE(SUM(amount), 0) as total FROM cash_register_withdrawals WHERE cash_register_id = ?')
+      .get(cashRegisterId) as { total: number }
+    return result.total
   }
 }
