@@ -239,4 +239,13 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 12')
   }
+
+  if (version < 13) {
+    db.exec(`
+      ALTER TABLE invoices ADD COLUMN cash_currency TEXT DEFAULT 'USD';
+      ALTER TABLE cash_register ADD COLUMN sales_cash_ves REAL DEFAULT 0;
+      ALTER TABLE cash_register ADD COLUMN sales_cash_cop REAL DEFAULT 0;
+    `)
+    db.pragma('user_version = 13')
+  }
 }

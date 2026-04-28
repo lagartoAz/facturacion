@@ -38,6 +38,8 @@ interface CashRegister {
   closing_amount_cop: number | null
   closing_notes: string | null
   sales_cash: number
+  sales_cash_ves: number
+  sales_cash_cop: number
   sales_card: number
   sales_card_ves: number
   sales_transfer: number
@@ -54,6 +56,8 @@ interface CashRegister {
 
 interface SessionSales {
   cash: number
+  cash_ves: number
+  cash_cop: number
   card: number
   card_ves: number
   transfer: number
@@ -403,6 +407,12 @@ export default function CashRegisterPage(): JSX.Element {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{formatUSD(sessionSales.cash)}</p>
+                {sessionSales.cash_ves > 0 && (
+                  <p className="text-xs text-muted-foreground">{formatVES(sessionSales.cash_ves)}</p>
+                )}
+                {sessionSales.cash_cop > 0 && (
+                  <p className="text-xs text-muted-foreground">{formatCOP(sessionSales.cash_cop)}</p>
+                )}
               </CardContent>
             </Card>
             <Card>
@@ -634,9 +644,21 @@ export default function CashRegisterPage(): JSX.Element {
               <div className="space-y-2 text-sm">
                 <p className="font-medium">Ventas en caja (efectivo)</p>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Efectivo</span>
+                  <span className="text-muted-foreground">Efectivo USD</span>
                   <span>{formatUSD(sessionSales.cash)}</span>
                 </div>
+                {sessionSales.cash_ves > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Efectivo VES</span>
+                    <span>{formatVES(sessionSales.cash_ves)}</span>
+                  </div>
+                )}
+                {sessionSales.cash_cop > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Efectivo COP</span>
+                    <span>{formatCOP(sessionSales.cash_cop)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Tarjeta</span>
                   <span>{formatUSD(sessionSales.card)}</span>

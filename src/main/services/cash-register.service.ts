@@ -11,6 +11,8 @@ export interface CashRegister {
   closing_amount_cop: number | null
   closing_notes: string | null
   sales_cash: number
+  sales_cash_ves: number
+  sales_cash_cop: number
   sales_card: number
   sales_card_ves: number
   sales_transfer: number
@@ -48,6 +50,8 @@ export interface CashRegisterWithdrawal {
 
 interface SalesByMethod {
   cash: number
+  cash_ves: number
+  cash_cop: number
   card: number
   card_ves: number
   transfer: number
@@ -101,7 +105,7 @@ export class CashRegisterService {
         `UPDATE cash_register SET
           closing_amount = ?, closing_amount_ves = ?, closing_amount_cop = ?,
           closing_notes = ?,
-          sales_cash = ?, sales_card = ?, sales_card_ves = ?, sales_transfer = ?, sales_transfer_ves = ?, sales_transfer_cop = ?, sales_credit = ?,
+          sales_cash = ?, sales_cash_ves = ?, sales_cash_cop = ?, sales_card = ?, sales_card_ves = ?, sales_transfer = ?, sales_transfer_ves = ?, sales_transfer_cop = ?, sales_credit = ?,
           total_invoices = ?, expected_cash = ?, difference = ?,
           status = 'closed', closed_at = datetime('now')
         WHERE id = ?`
@@ -112,6 +116,8 @@ export class CashRegisterService {
         countedAmounts.cop,
         notes || null,
         sales.cash,
+        sales.cash_ves,
+        sales.cash_cop,
         sales.card,
         sales.card_ves,
         sales.transfer,
@@ -173,10 +179,10 @@ export class CashRegisterService {
       )
       .all(openedAt) as { payment_method: string; total: number; ves: number; cop: number; count: number }[]
 
-    const result: SalesByMethod = { cash: 0, card: 0, card_ves: 0, transfer: 0, transfer_ves: 0, transfer_cop: 0, credit: 0, count: 0 }
+    const result: SalesByMethod = { cash: 0, cash_ves: 0, cash_cop: 0, card: 0, card_ves: 0, transfer: 0, transfer_ves: 0, transfer_cop: 0, credit: 0, count: 0 }
     for (const row of rows) {
       if (row.payment_method in result) {
-        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'transfer_ves' | 'transfer_cop' | 'card_ves'>] = row.total
+        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'cash_ves' | 'cash_cop' | 'transfer_ves' | 'transfer_cop' | 'card_ves'>] = row.total
       }
       if (row.payment_method === 'transfer') {
         result.transfer_ves = row.ves
@@ -186,6 +192,17 @@ export class CashRegisterService {
         result.card_ves = row.ves
       }
       result.count += row.count
+    }
+
+    // Cash payments by currency
+    const cashByCurrency = this.db
+      .prepare(
+        "SELECT COALESCE(cash_currency, 'USD') as currency, COALESCE(SUM(total_ves), 0) as ves, COALESCE(SUM(total_cop), 0) as cop FROM invoices WHERE created_at >= ? AND status = 'completed' AND payment_method = 'cash' GROUP BY COALESCE(cash_currency, 'USD')"
+      )
+      .all(openedAt) as { currency: string; ves: number; cop: number }[]
+    for (const row of cashByCurrency) {
+      if (row.currency === 'VES') result.cash_ves = row.ves
+      if (row.currency === 'COP') result.cash_cop = row.cop
     }
 
     // Mixed payment invoices — split amounts by method
@@ -201,7 +218,7 @@ export class CashRegisterService {
 
     for (const row of mixedRows) {
       if (row.payment_method in result) {
-        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'transfer_ves' | 'transfer_cop' | 'card_ves'>] += row.total
+        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'cash_ves' | 'cash_cop' | 'transfer_ves' | 'transfer_cop' | 'card_ves'>] += row.total
       }
       if (row.payment_method === 'transfer') {
         result.transfer_ves += row.ves

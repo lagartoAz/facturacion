@@ -19,6 +19,7 @@ export interface CreateInvoiceDTO {
   items: InvoiceItem[]
   paymentMethod: string
   payments?: PaymentSplit[]
+  cashCurrency?: string
   paymentAmountVes?: number
   paymentAmountCop?: number
   notes?: string
@@ -38,6 +39,7 @@ export interface Invoice {
   total_ves: number | null
   total_cop: number | null
   payment_method: string
+  cash_currency: string | null
   payment_amount_ves: number | null
   payment_amount_cop: number | null
   notes: string | null
@@ -95,8 +97,8 @@ export class InvoiceService {
         .prepare(
           `INSERT INTO invoices (invoice_number, customer_id, subtotal_usd, tax_percent,
             tax_amount_usd, total_usd, rate_ves, rate_cop, total_ves, total_cop,
-            payment_method, payment_amount_ves, payment_amount_cop, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            payment_method, cash_currency, payment_amount_ves, payment_amount_cop, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           invoiceNumber,
@@ -110,6 +112,7 @@ export class InvoiceService {
           total * rateVes,
           total * rateCop,
           data.paymentMethod,
+          data.cashCurrency || null,
           data.paymentAmountVes ?? null,
           data.paymentAmountCop ?? null,
           data.notes || null

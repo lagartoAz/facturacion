@@ -91,6 +91,7 @@ export default function PosPage(): JSX.Element {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [cashCurrency, setCashCurrency] = useState('USD')
   const [paymentVes, setPaymentVes] = useState('')
   const [paymentCop, setPaymentCop] = useState('')
   const [mixedPayments, setMixedPayments] = useState({ cash: '', card: '', transfer: '', credit: '' })
@@ -302,6 +303,7 @@ export default function PosPage(): JSX.Element {
           isCustom: item.isCustom || false
         })),
         paymentMethod,
+        cashCurrency: paymentMethod === 'cash' ? cashCurrency : undefined,
         paymentAmountVes: (paymentMethod === 'card' || paymentMethod === 'transfer') && paymentVes ? parseFloat(paymentVes) || undefined : undefined,
         paymentAmountCop: paymentMethod === 'transfer' && paymentCop ? parseFloat(paymentCop) || undefined : undefined
       }
@@ -323,6 +325,7 @@ export default function PosPage(): JSX.Element {
       setSelectedCustomerId(null)
       setPaymentDialogOpen(false)
       setPaymentMethod('cash')
+      setCashCurrency('USD')
       setPaymentVes('')
       setPaymentCop('')
       setMixedPayments({ cash: '', card: '', transfer: '', credit: '' })
@@ -632,6 +635,7 @@ export default function PosPage(): JSX.Element {
                     variant={paymentMethod === method.value ? 'default' : 'outline'}
                     onClick={() => {
                       setPaymentMethod(method.value)
+                      setCashCurrency('USD')
                       if (method.value !== 'mixed') {
                         setMixedPayments({ cash: '', card: '', transfer: '', credit: '' })
                       }
@@ -653,6 +657,35 @@ export default function PosPage(): JSX.Element {
                   </Button>
                 ))}
               </div>
+              {paymentMethod === 'cash' && (
+                <div className="space-y-2 pt-2">
+                  <label className="text-xs text-muted-foreground">Moneda del efectivo</label>
+                  <div className="flex gap-2">
+                    {(['USD', 'VES', 'COP'] as const).map((cur) => (
+                      <Button
+                        key={cur}
+                        type="button"
+                        variant={cashCurrency === cur ? 'default' : 'outline'}
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => setCashCurrency(cur)}
+                      >
+                        {cur === 'USD' ? 'Dolares' : cur === 'VES' ? 'Bolivares' : 'Pesos'}
+                      </Button>
+                    ))}
+                  </div>
+                  {cashCurrency === 'VES' && (
+                    <p className="text-xs text-muted-foreground">
+                      Equivalente: {formatVES(convertCurrency(total, getRate('VES')))}
+                    </p>
+                  )}
+                  {cashCurrency === 'COP' && (
+                    <p className="text-xs text-muted-foreground">
+                      Equivalente: {formatCOP(convertCurrency(total, getRate('COP')))}
+                    </p>
+                  )}
+                </div>
+              )}
               {(paymentMethod === 'card' || paymentMethod === 'transfer') && (
                 <div className="space-y-2 pt-2">
                   <div className="space-y-1">
