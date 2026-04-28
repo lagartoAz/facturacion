@@ -751,27 +751,38 @@ export default function CashRegisterPage(): JSX.Element {
 
               <Separator />
 
-              {/* Expected USD cash */}
+              {/* Expected cash by currency */}
               <div className="space-y-2 text-sm">
+                <p className="font-medium">Efectivo esperado por moneda</p>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Apertura USD</span>
-                  <span>{formatUSD(currentRegister.opening_amount)}</span>
+                  <span className="text-muted-foreground">USD: Apertura ({formatUSD(currentRegister.opening_amount)}) + Ventas ({formatUSD(sessionSales.cash)}){totalWithdrawalsUsd > 0 ? ` - Retiros (${formatUSD(totalWithdrawalsUsd)})` : ''}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">+ Ventas efectivo</span>
-                  <span>{formatUSD(sessionSales.cash)}</span>
-                </div>
-                {totalWithdrawalsUsd > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-orange-500">- Retiros USD</span>
-                    <span className="text-orange-500">-{formatUSD(totalWithdrawalsUsd)}</span>
-                  </div>
-                )}
-                <Separator />
                 <div className="flex justify-between font-bold">
-                  <span>Efectivo USD esperado</span>
+                  <span>Esperado USD</span>
                   <span>{formatUSD(currentRegister.opening_amount + sessionSales.cash - totalWithdrawalsUsd)}</span>
                 </div>
+                {(currentRegister.opening_amount_ves > 0 || sessionSales.cash_ves > 0 || totalWithdrawalsVes > 0) && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">VES: Apertura ({formatVES(currentRegister.opening_amount_ves)}) + Ventas ({formatVES(sessionSales.cash_ves)}){totalWithdrawalsVes > 0 ? ` - Retiros (${formatVES(totalWithdrawalsVes)})` : ''}</span>
+                    </div>
+                    <div className="flex justify-between font-bold">
+                      <span>Esperado VES</span>
+                      <span>{formatVES(currentRegister.opening_amount_ves + sessionSales.cash_ves - totalWithdrawalsVes)}</span>
+                    </div>
+                  </>
+                )}
+                {(currentRegister.opening_amount_cop > 0 || sessionSales.cash_cop > 0 || totalWithdrawalsCop > 0) && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">COP: Apertura ({formatCOP(currentRegister.opening_amount_cop)}) + Ventas ({formatCOP(sessionSales.cash_cop)}){totalWithdrawalsCop > 0 ? ` - Retiros (${formatCOP(totalWithdrawalsCop)})` : ''}</span>
+                    </div>
+                    <div className="flex justify-between font-bold">
+                      <span>Esperado COP</span>
+                      <span>{formatCOP(currentRegister.opening_amount_cop + sessionSales.cash_cop - totalWithdrawalsCop)}</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               <Separator />
@@ -816,7 +827,7 @@ export default function CashRegisterPage(): JSX.Element {
                   </div>
                 </div>
 
-                {/* USD difference */}
+                {/* Differences by currency */}
                 {closeUsd && !isNaN(parseFloat(closeUsd)) && (
                   <div className="text-sm">
                     <span className="text-muted-foreground">Diferencia USD: </span>
@@ -825,6 +836,34 @@ export default function CashRegisterPage(): JSX.Element {
                       return (
                         <span className={`font-medium ${diff < 0 ? 'text-red-500' : diff > 0 ? 'text-green-500' : ''}`}>
                           {diff >= 0 ? '+' : ''}{formatUSD(diff)}
+                          {diff < 0 ? ' (Faltante)' : diff > 0 ? ' (Sobrante)' : ' (Cuadra)'}
+                        </span>
+                      )
+                    })()}
+                  </div>
+                )}
+                {closeVes && !isNaN(parseFloat(closeVes)) && (currentRegister.opening_amount_ves > 0 || sessionSales.cash_ves > 0 || totalWithdrawalsVes > 0) && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Diferencia VES: </span>
+                    {(() => {
+                      const diff = parseFloat(closeVes) - (currentRegister.opening_amount_ves + sessionSales.cash_ves - totalWithdrawalsVes)
+                      return (
+                        <span className={`font-medium ${diff < 0 ? 'text-red-500' : diff > 0 ? 'text-green-500' : ''}`}>
+                          {diff >= 0 ? '+' : ''}{formatVES(diff)}
+                          {diff < 0 ? ' (Faltante)' : diff > 0 ? ' (Sobrante)' : ' (Cuadra)'}
+                        </span>
+                      )
+                    })()}
+                  </div>
+                )}
+                {closeCop && !isNaN(parseFloat(closeCop)) && (currentRegister.opening_amount_cop > 0 || sessionSales.cash_cop > 0 || totalWithdrawalsCop > 0) && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Diferencia COP: </span>
+                    {(() => {
+                      const diff = parseFloat(closeCop) - (currentRegister.opening_amount_cop + sessionSales.cash_cop - totalWithdrawalsCop)
+                      return (
+                        <span className={`font-medium ${diff < 0 ? 'text-red-500' : diff > 0 ? 'text-green-500' : ''}`}>
+                          {diff >= 0 ? '+' : ''}{formatCOP(diff)}
                           {diff < 0 ? ' (Faltante)' : diff > 0 ? ' (Sobrante)' : ' (Cuadra)'}
                         </span>
                       )

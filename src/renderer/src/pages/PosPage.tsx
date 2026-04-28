@@ -29,7 +29,8 @@ import {
   CheckCircle2,
   UserCheck,
   PlusCircle,
-  Layers
+  Layers,
+  Check
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -92,6 +93,7 @@ export default function PosPage(): JSX.Element {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [cashCurrency, setCashCurrency] = useState('USD')
+  const [transferCurrency, setTransferCurrency] = useState<'VES' | 'COP'>('VES')
   const [paymentVes, setPaymentVes] = useState('')
   const [paymentCop, setPaymentCop] = useState('')
   const [mixedPayments, setMixedPayments] = useState({ cash: '', card: '', transfer: '', credit: '' })
@@ -304,8 +306,8 @@ export default function PosPage(): JSX.Element {
         })),
         paymentMethod,
         cashCurrency: paymentMethod === 'cash' ? cashCurrency : undefined,
-        paymentAmountVes: (paymentMethod === 'card' || paymentMethod === 'transfer') && paymentVes ? parseFloat(paymentVes) || undefined : undefined,
-        paymentAmountCop: paymentMethod === 'transfer' && paymentCop ? parseFloat(paymentCop) || undefined : undefined
+        paymentAmountVes: (paymentMethod === 'card' || (paymentMethod === 'transfer' && transferCurrency === 'VES')) && paymentVes ? parseFloat(paymentVes) || undefined : undefined,
+        paymentAmountCop: paymentMethod === 'transfer' && transferCurrency === 'COP' && paymentCop ? parseFloat(paymentCop) || undefined : undefined
       }
       if (paymentMethod === 'mixed') {
         invoiceData.payments = [
@@ -639,14 +641,15 @@ export default function PosPage(): JSX.Element {
                       if (method.value !== 'mixed') {
                         setMixedPayments({ cash: '', card: '', transfer: '', credit: '' })
                       }
-                      if (method.value === 'card' || method.value === 'transfer') {
+                      if (method.value === 'card') {
                         setPaymentVes(String(convertCurrency(total, getRate('VES')).toFixed(2)))
+                        setPaymentCop('')
+                      } else if (method.value === 'transfer') {
+                        setTransferCurrency('VES')
+                        setPaymentVes(String(convertCurrency(total, getRate('VES')).toFixed(2)))
+                        setPaymentCop('')
                       } else {
                         setPaymentVes('')
-                      }
-                      if (method.value === 'transfer') {
-                        setPaymentCop(String(convertCurrency(total, getRate('COP')).toFixed(0)))
-                      } else {
                         setPaymentCop('')
                       }
                     }}
@@ -686,7 +689,7 @@ export default function PosPage(): JSX.Element {
                   )}
                 </div>
               )}
-              {(paymentMethod === 'card' || paymentMethod === 'transfer') && (
+              {paymentMethod === 'card' && (
                 <div className="space-y-2 pt-2">
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Monto en Bs</label>
@@ -699,7 +702,49 @@ export default function PosPage(): JSX.Element {
                       onChange={(e) => setPaymentVes(e.target.value)}
                     />
                   </div>
-                  {paymentMethod === 'transfer' && (
+                </div>
+              )}
+              {paymentMethod === 'transfer' && (
+                <div className="space-y-2 pt-2">
+                  <label className="text-xs text-muted-foreground">Moneda de la transferencia</label>
+                  <div className="flex gap-2">
+                    {(['VES', 'COP'] as const).map((cur) => (
+                      <Button
+                        key={cur}
+                        type="button"
+                        variant={transferCurrency === cur ? 'default' : 'outline'}
+                        size="sm"
+                        className="flex-1 gap-2"
+                        onClick={() => {
+                          setTransferCurrency(cur)
+                          if (cur === 'VES') {
+                            setPaymentVes(String(convertCurrency(total, getRate('VES')).toFixed(2)))
+                            setPaymentCop('')
+                          } else {
+                            setPaymentCop(String(convertCurrency(total, getRate('COP')).toFixed(0)))
+                            setPaymentVes('')
+                          }
+                        }}
+                      >
+                        {transferCurrency === cur && <Check className="h-4 w-4" />}
+                        {cur === 'VES' ? 'Bolivares' : 'Pesos'}
+                      </Button>
+                    ))}
+                  </div>
+                  {transferCurrency === 'VES' && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Monto en Bs</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={paymentVes}
+                        onChange={(e) => setPaymentVes(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  {transferCurrency === 'COP' && (
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Monto en Pesos (COP)</label>
                       <Input
