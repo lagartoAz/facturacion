@@ -38,6 +38,7 @@ export interface CashRegisterWithdrawal {
   id: number
   cash_register_id: number
   amount: number
+  currency: string
   reason: string
   created_at: string
 }
@@ -46,6 +47,7 @@ interface SalesByMethod {
   cash: number
   card: number
   transfer: number
+  transfer_ves: number
   credit: number
   count: number
 }
@@ -156,23 +158,49 @@ export class CashRegisterService {
   }
 
   getSalesForSession(openedAt: string): SalesByMethod {
+    // Regular (non-mixed) invoices
     const rows = this.db
       .prepare(
-        "SELECT payment_method, COALESCE(SUM(total_usd), 0) as total, COUNT(*) as count FROM invoices WHERE created_at >= ? AND status = 'completed' GROUP BY payment_method"
+        "SELECT payment_method, COALESCE(SUM(total_usd), 0) as total, COALESCE(SUM(total_ves), 0) as total_ves, COUNT(*) as count FROM invoices WHERE created_at >= ? AND status = 'completed' AND payment_method != 'mixed' GROUP BY payment_method"
       )
-      .all(openedAt) as { payment_method: string; total: number; count: number }[]
+      .all(openedAt) as { payment_method: string; total: number; total_ves: number; count: number }[]
 
-    const result: SalesByMethod = { cash: 0, card: 0, transfer: 0, credit: 0, count: 0 }
+    const result: SalesByMethod = { cash: 0, card: 0, transfer: 0, transfer_ves: 0, credit: 0, count: 0 }
     for (const row of rows) {
       if (row.payment_method in result) {
-        result[row.payment_method as keyof Omit<SalesByMethod, 'count'>] = row.total
+        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'transfer_ves'>] = row.total
+      }
+      if (row.payment_method === 'transfer') {
+        result.transfer_ves = row.total_ves
       }
       result.count += row.count
     }
+
+    // Mixed payment invoices — split amounts by method
+    const mixedRows = this.db
+      .prepare(
+        "SELECT ip.method as payment_method, SUM(ip.amount) as total, SUM(ip.amount * COALESCE(i.rate_ves, 0)) as total_ves, COUNT(DISTINCT ip.invoice_id) as count FROM invoice_payments ip JOIN invoices i ON ip.invoice_id = i.id WHERE i.created_at >= ? AND i.status = 'completed' AND i.payment_method = 'mixed' GROUP BY ip.method"
+      )
+      .all(openedAt) as { payment_method: string; total: number; total_ves: number; count: number }[]
+
+    const mixedCount = (this.db
+      .prepare("SELECT COUNT(*) as count FROM invoices WHERE created_at >= ? AND status = 'completed' AND payment_method = 'mixed'")
+      .get(openedAt) as { count: number }).count
+
+    for (const row of mixedRows) {
+      if (row.payment_method in result) {
+        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'transfer_ves'>] += row.total
+      }
+      if (row.payment_method === 'transfer') {
+        result.transfer_ves += row.total_ves
+      }
+    }
+    result.count += mixedCount
+
     return result
   }
 
-  addWithdrawal(cashRegisterId: number, amount: number, reason: string): CashRegisterWithdrawal {
+  addWithdrawal(cashRegisterId: number, amount: number, reason: string, currency: string = 'USD'): CashRegisterWithdrawal {
     const register = this.db
       .prepare('SELECT * FROM cash_register WHERE id = ?')
       .get(cashRegisterId) as CashRegister | undefined
@@ -185,8 +213,8 @@ export class CashRegisterService {
     }
 
     const result = this.db
-      .prepare('INSERT INTO cash_register_withdrawals (cash_register_id, amount, reason) VALUES (?, ?, ?)')
-      .run(cashRegisterId, amount, reason)
+      .prepare('INSERT INTO cash_register_withdrawals (cash_register_id, amount, reason, currency) VALUES (?, ?, ?, ?)')
+      .run(cashRegisterId, amount, reason, currency)
 
     return this.db
       .prepare('SELECT * FROM cash_register_withdrawals WHERE id = ?')
@@ -201,7 +229,7 @@ export class CashRegisterService {
 
   private getTotalWithdrawals(cashRegisterId: number): number {
     const result = this.db
-      .prepare('SELECT COALESCE(SUM(amount), 0) as total FROM cash_register_withdrawals WHERE cash_register_id = ?')
+      .prepare("SELECT COALESCE(SUM(amount), 0) as total FROM cash_register_withdrawals WHERE cash_register_id = ? AND currency = 'USD'")
       .get(cashRegisterId) as { total: number }
     return result.total
   }

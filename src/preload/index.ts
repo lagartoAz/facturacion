@@ -84,8 +84,8 @@ const api = {
     ipcRenderer.invoke('cash-register:getSales', openedAt),
   updateCashRegister: (id: number, amounts: { usd: number; ves: number; cop: number }, notes?: string) =>
     ipcRenderer.invoke('cash-register:update', id, amounts, notes),
-  addCashRegisterWithdrawal: (cashRegisterId: number, amount: number, reason: string) =>
-    ipcRenderer.invoke('cash-register:addWithdrawal', cashRegisterId, amount, reason),
+  addCashRegisterWithdrawal: (cashRegisterId: number, amount: number, reason: string, currency: string = 'USD') =>
+    ipcRenderer.invoke('cash-register:addWithdrawal', cashRegisterId, amount, reason, currency),
   getCashRegisterWithdrawals: (cashRegisterId: number) =>
     ipcRenderer.invoke('cash-register:getWithdrawals', cashRegisterId),
 

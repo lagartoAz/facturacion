@@ -9,10 +9,16 @@ export interface InvoiceItem {
   isCustom?: boolean
 }
 
+export interface PaymentSplit {
+  method: string
+  amount: number
+}
+
 export interface CreateInvoiceDTO {
   customerId?: number
   items: InvoiceItem[]
   paymentMethod: string
+  payments?: PaymentSplit[]
   notes?: string
 }
 
@@ -34,6 +40,7 @@ export interface Invoice {
   status: string
   created_at: string
   items?: InvoiceItemRow[]
+  payments?: PaymentSplit[]
 }
 
 export interface InvoiceItemRow {
@@ -130,6 +137,18 @@ export class InvoiceService {
         }
       }
 
+      // Insert payment splits for mixed payments
+      if (data.paymentMethod === 'mixed' && data.payments) {
+        const insertPayment = this.db.prepare(
+          'INSERT INTO invoice_payments (invoice_id, method, amount) VALUES (?, ?, ?)'
+        )
+        for (const payment of data.payments) {
+          if (payment.amount > 0) {
+            insertPayment.run(invoiceId, payment.method, payment.amount)
+          }
+        }
+      }
+
       return this.getById(Number(invoiceId))!
     })
 
@@ -179,6 +198,11 @@ export class InvoiceService {
       invoice.items = this.db
         .prepare('SELECT * FROM invoice_items WHERE invoice_id = ?')
         .all(id) as InvoiceItemRow[]
+      if (invoice.payment_method === 'mixed') {
+        invoice.payments = this.db
+          .prepare('SELECT method, amount FROM invoice_payments WHERE invoice_id = ?')
+          .all(id) as PaymentSplit[]
+      }
     }
 
     return invoice

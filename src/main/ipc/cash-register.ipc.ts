@@ -38,8 +38,8 @@ export function registerCashRegisterHandlers(db: Database.Database): void {
 
   ipcMain.handle(
     'cash-register:addWithdrawal',
-    (_event, cashRegisterId: number, amount: number, reason: string) => {
-      return service.addWithdrawal(cashRegisterId, amount, reason)
+    (_event, cashRegisterId: number, amount: number, reason: string, currency: string) => {
+      return service.addWithdrawal(cashRegisterId, amount, reason, currency)
     }
   )
 

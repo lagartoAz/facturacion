@@ -28,7 +28,8 @@ import {
   Printer,
   CheckCircle2,
   UserCheck,
-  PlusCircle
+  PlusCircle,
+  Layers
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -90,6 +91,7 @@ export default function PosPage(): JSX.Element {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [mixedPayments, setMixedPayments] = useState({ cash: '', card: '', transfer: '', credit: '' })
   const [notification, setNotification] = useState('')
   const [successDialogOpen, setSuccessDialogOpen] = useState(false)
   const [completedInvoice, setCompletedInvoice] = useState<CompletedInvoice | null>(null)
@@ -269,8 +271,26 @@ export default function PosPage(): JSX.Element {
       showNotification('Debe seleccionar un cliente para pago a credito')
       return
     }
+    if (paymentMethod === 'mixed') {
+      const payments = [
+        { method: 'cash', amount: parseFloat(mixedPayments.cash) || 0 },
+        { method: 'card', amount: parseFloat(mixedPayments.card) || 0 },
+        { method: 'transfer', amount: parseFloat(mixedPayments.transfer) || 0 },
+        { method: 'credit', amount: parseFloat(mixedPayments.credit) || 0 }
+      ].filter((p) => p.amount > 0)
+      const assignedTotal = payments.reduce((s, p) => s + p.amount, 0)
+      const diff = Math.abs(assignedTotal - total)
+      if (diff > 0.01) {
+        showNotification(`El monto asignado (${formatUSD(assignedTotal)}) no coincide con el total (${formatUSD(total)})`)
+        return
+      }
+      if (payments.some((p) => p.method === 'credit') && !selectedCustomerId) {
+        showNotification('Debe seleccionar un cliente para incluir pago a credito')
+        return
+      }
+    }
     try {
-      const invoice = await window.api.createInvoice({
+      const invoiceData: Record<string, unknown> = {
         customerId: selectedCustomerId || undefined,
         items: cart.map((item) => ({
           productId: item.productId,
@@ -280,7 +300,16 @@ export default function PosPage(): JSX.Element {
           isCustom: item.isCustom || false
         })),
         paymentMethod
-      })
+      }
+      if (paymentMethod === 'mixed') {
+        invoiceData.payments = [
+          { method: 'cash', amount: parseFloat(mixedPayments.cash) || 0 },
+          { method: 'card', amount: parseFloat(mixedPayments.card) || 0 },
+          { method: 'transfer', amount: parseFloat(mixedPayments.transfer) || 0 },
+          { method: 'credit', amount: parseFloat(mixedPayments.credit) || 0 }
+        ].filter((p) => p.amount > 0)
+      }
+      const invoice = await window.api.createInvoice(invoiceData)
 
       // Fetch full invoice with items for printing
       const fullInvoice = await window.api.getInvoiceById(invoice.id)
@@ -290,6 +319,7 @@ export default function PosPage(): JSX.Element {
       setSelectedCustomerId(null)
       setPaymentDialogOpen(false)
       setPaymentMethod('cash')
+      setMixedPayments({ cash: '', card: '', transfer: '', credit: '' })
 
       if (isStandaloneWindow) {
         // In standalone mode, close the window after sale
@@ -583,17 +613,23 @@ export default function PosPage(): JSX.Element {
             <Separator />
             <div className="space-y-2">
               <p className="text-sm font-medium">Metodo de Pago</p>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 {[
                   { value: 'cash', label: 'Efectivo', icon: DollarSign },
                   { value: 'card', label: 'Tarjeta', icon: CreditCard },
                   { value: 'transfer', label: 'Transfer', icon: ArrowRightLeft },
-                  { value: 'credit', label: 'Credito', icon: UserCheck }
+                  { value: 'credit', label: 'Credito', icon: UserCheck },
+                  { value: 'mixed', label: 'Mixto', icon: Layers }
                 ].map((method) => (
                   <Button
                     key={method.value}
                     variant={paymentMethod === method.value ? 'default' : 'outline'}
-                    onClick={() => setPaymentMethod(method.value)}
+                    onClick={() => {
+                      setPaymentMethod(method.value)
+                      if (method.value !== 'mixed') {
+                        setMixedPayments({ cash: '', card: '', transfer: '', credit: '' })
+                      }
+                    }}
                     className="flex flex-col h-auto py-3"
                   >
                     <method.icon className="h-5 w-5 mb-1" />
@@ -601,6 +637,77 @@ export default function PosPage(): JSX.Element {
                   </Button>
                 ))}
               </div>
+              {paymentMethod === 'mixed' && (
+                <div className="space-y-3 pt-2">
+                  <p className="text-xs text-muted-foreground">Distribuya el total entre los metodos de pago</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <DollarSign className="h-3 w-3" /> Efectivo
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={mixedPayments.cash}
+                        onChange={(e) => setMixedPayments((p) => ({ ...p, cash: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <CreditCard className="h-3 w-3" /> Tarjeta
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={mixedPayments.card}
+                        onChange={(e) => setMixedPayments((p) => ({ ...p, card: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <ArrowRightLeft className="h-3 w-3" /> Transferencia
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={mixedPayments.transfer}
+                        onChange={(e) => setMixedPayments((p) => ({ ...p, transfer: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <UserCheck className="h-3 w-3" /> Credito
+                      </label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={mixedPayments.credit}
+                        onChange={(e) => setMixedPayments((p) => ({ ...p, credit: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  {(() => {
+                    const assigned = (parseFloat(mixedPayments.cash) || 0) + (parseFloat(mixedPayments.card) || 0) + (parseFloat(mixedPayments.transfer) || 0) + (parseFloat(mixedPayments.credit) || 0)
+                    const remaining = total - assigned
+                    return (
+                      <div className="flex justify-between text-sm font-medium">
+                        <span>Asignado: {formatUSD(assigned)}</span>
+                        <span className={remaining > 0.01 ? 'text-red-500' : remaining < -0.01 ? 'text-red-500' : 'text-green-500'}>
+                          {Math.abs(remaining) < 0.01 ? 'Completo' : `Faltan: ${formatUSD(remaining)}`}
+                        </span>
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
             </div>
             <div className="text-sm space-y-1">
               <p>

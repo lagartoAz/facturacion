@@ -30,6 +30,7 @@ interface Invoice {
   status: string
   created_at: string
   items?: InvoiceItem[]
+  payments?: { method: string; amount: number }[]
 }
 
 interface InvoiceItem {
@@ -114,7 +115,7 @@ export default function InvoicesPage(): JSX.Element {
         ${inv.total_ves ? `<div class="right">Bs. ${inv.total_ves.toFixed(2)} (Tasa: ${inv.rate_ves?.toFixed(2)})</div>` : ''}
         ${inv.total_cop ? `<div class="right">COP ${Math.round(inv.total_cop)} (Tasa: ${inv.rate_cop?.toFixed(0)})</div>` : ''}
         <div class="divider"></div>
-        <div class="center">Pago: ${inv.payment_method}</div>
+        <div class="center">Pago: ${inv.payment_method === 'mixed' && inv.payments ? 'Mixto - ' + inv.payments.map((p: { method: string; amount: number }) => `${p.method}: $${p.amount.toFixed(2)}`).join(', ') : (paymentLabels[inv.payment_method] || inv.payment_method)}</div>
         <div class="center" style="margin-top:10px">Gracias por su compra!</div>
       </body></html>
     `)
@@ -125,7 +126,8 @@ export default function InvoicesPage(): JSX.Element {
   const paymentLabels: Record<string, string> = {
     cash: 'Efectivo',
     card: 'Tarjeta',
-    transfer: 'Transferencia'
+    transfer: 'Transferencia',
+    mixed: 'Mixto'
   }
 
   return (
@@ -222,6 +224,15 @@ export default function InvoicesPage(): JSX.Element {
                 <div>
                   <span className="text-muted-foreground">Pago:</span>{' '}
                   {paymentLabels[selectedInvoice.payment_method] || selectedInvoice.payment_method}
+                  {selectedInvoice.payment_method === 'mixed' && selectedInvoice.payments && (
+                    <div className="mt-1 space-y-0.5">
+                      {selectedInvoice.payments.map((p: { method: string; amount: number }, i: number) => (
+                        <div key={i} className="text-xs text-muted-foreground">
+                          {paymentLabels[p.method] || p.method}: {formatUSD(p.amount)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Badge variant={selectedInvoice.status === 'completed' ? 'default' : 'destructive'}>

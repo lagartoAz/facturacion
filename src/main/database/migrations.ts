@@ -204,4 +204,22 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 8')
   }
+
+  if (version < 9) {
+    db.exec(`ALTER TABLE cash_register_withdrawals ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD'`)
+    db.pragma('user_version = 9')
+  }
+
+  if (version < 10) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS invoice_payments (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_id  INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        method      TEXT NOT NULL,
+        amount      REAL NOT NULL CHECK (amount > 0)
+      );
+      CREATE INDEX IF NOT EXISTS idx_invoice_payments_invoice ON invoice_payments(invoice_id);
+    `)
+    db.pragma('user_version = 10')
+  }
 }
