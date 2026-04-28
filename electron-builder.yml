@@ -21,6 +21,10 @@ linux:
 win:
   target:
     - nsis
+nsis:
+  oneClick: true
+  allowToChangeInstallationDirectory: false
+  deleteAppDataOnUninstall: false
 mac:
   target:
     - dmg
