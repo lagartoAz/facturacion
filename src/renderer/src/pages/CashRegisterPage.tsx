@@ -42,6 +42,7 @@ interface CashRegister {
   sales_card_ves: number
   sales_transfer: number
   sales_transfer_ves: number
+  sales_transfer_cop: number
   sales_credit: number
   total_invoices: number
   expected_cash: number | null
@@ -57,6 +58,7 @@ interface SessionSales {
   card_ves: number
   transfer: number
   transfer_ves: number
+  transfer_cop: number
   credit: number
   count: number
 }
@@ -420,6 +422,9 @@ export default function CashRegisterPage(): JSX.Element {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{formatVES(sessionSales.transfer_ves)}</p>
+                {sessionSales.transfer_cop > 0 && (
+                  <p className="text-xs text-muted-foreground">{formatCOP(sessionSales.transfer_cop)}</p>
+                )}
                 <p className="text-xs text-muted-foreground">{formatUSD(sessionSales.transfer)}</p>
               </CardContent>
             </Card>
@@ -522,6 +527,7 @@ export default function CashRegisterPage(): JSX.Element {
                     <th className="text-right p-3 font-medium">Efect. VES</th>
                     <th className="text-right p-3 font-medium">Efect. COP</th>
                     <th className="text-right p-3 font-medium">Bs Banco</th>
+                    <th className="text-right p-3 font-medium">COP Banco</th>
                     <th className="text-right p-3 font-medium">Facturas</th>
                     <th className="text-right p-3 font-medium">Dif. USD</th>
                     <th className="text-center p-3 font-medium"></th>
@@ -540,6 +546,7 @@ export default function CashRegisterPage(): JSX.Element {
                         <td className="p-3 text-right">{reg.closing_amount_ves ? formatVES(reg.closing_amount_ves) : '-'}</td>
                         <td className="p-3 text-right">{reg.closing_amount_cop ? formatCOP(reg.closing_amount_cop) : '-'}</td>
                         <td className="p-3 text-right text-blue-500 font-medium">{totalBsBanco > 0 ? formatVES(totalBsBanco) : '-'}</td>
+                        <td className="p-3 text-right text-blue-500 font-medium">{(reg.sales_transfer_cop || 0) > 0 ? formatCOP(reg.sales_transfer_cop) : '-'}</td>
                         <td className="p-3 text-right">{reg.total_invoices}</td>
                         <td className={`p-3 text-right font-medium ${reg.difference != null ? (reg.difference < 0 ? 'text-red-500' : reg.difference > 0 ? 'text-green-500' : '') : ''}`}>
                           {reg.difference != null ? (reg.difference >= 0 ? '+' : '') + formatUSD(reg.difference) : '-'}
@@ -662,10 +669,18 @@ export default function CashRegisterPage(): JSX.Element {
                       </div>
                     )}
                     {sessionSales.transfer > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Transferencia</span>
-                        <span>{formatVES(sessionSales.transfer_ves)}</span>
-                      </div>
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Transferencia Bs</span>
+                          <span>{formatVES(sessionSales.transfer_ves)}</span>
+                        </div>
+                        {sessionSales.transfer_cop > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Transferencia COP</span>
+                            <span>{formatCOP(sessionSales.transfer_cop)}</span>
+                          </div>
+                        )}
+                      </>
                     )}
                     <Separator />
                     <div className="flex justify-between font-medium text-blue-500">

@@ -15,6 +15,7 @@ export interface CashRegister {
   sales_card_ves: number
   sales_transfer: number
   sales_transfer_ves: number
+  sales_transfer_cop: number
   sales_credit: number
   total_invoices: number
   expected_cash: number | null
@@ -51,6 +52,7 @@ interface SalesByMethod {
   card_ves: number
   transfer: number
   transfer_ves: number
+  transfer_cop: number
   credit: number
   count: number
 }
@@ -99,7 +101,7 @@ export class CashRegisterService {
         `UPDATE cash_register SET
           closing_amount = ?, closing_amount_ves = ?, closing_amount_cop = ?,
           closing_notes = ?,
-          sales_cash = ?, sales_card = ?, sales_card_ves = ?, sales_transfer = ?, sales_transfer_ves = ?, sales_credit = ?,
+          sales_cash = ?, sales_card = ?, sales_card_ves = ?, sales_transfer = ?, sales_transfer_ves = ?, sales_transfer_cop = ?, sales_credit = ?,
           total_invoices = ?, expected_cash = ?, difference = ?,
           status = 'closed', closed_at = datetime('now')
         WHERE id = ?`
@@ -114,6 +116,7 @@ export class CashRegisterService {
         sales.card_ves,
         sales.transfer,
         sales.transfer_ves,
+        sales.transfer_cop,
         sales.credit,
         sales.count,
         expectedCash,
@@ -163,20 +166,21 @@ export class CashRegisterService {
   }
 
   getSalesForSession(openedAt: string): SalesByMethod {
-    // Regular (non-mixed) invoices — use payment_amount_ves when available, fallback to total_ves
+    // Regular (non-mixed) invoices — use payment_amount_ves/cop when available, fallback to total_ves/cop
     const rows = this.db
       .prepare(
-        "SELECT payment_method, COALESCE(SUM(total_usd), 0) as total, COALESCE(SUM(COALESCE(payment_amount_ves, total_ves, 0)), 0) as ves, COUNT(*) as count FROM invoices WHERE created_at >= ? AND status = 'completed' AND payment_method != 'mixed' GROUP BY payment_method"
+        "SELECT payment_method, COALESCE(SUM(total_usd), 0) as total, COALESCE(SUM(COALESCE(payment_amount_ves, total_ves, 0)), 0) as ves, COALESCE(SUM(COALESCE(payment_amount_cop, total_cop, 0)), 0) as cop, COUNT(*) as count FROM invoices WHERE created_at >= ? AND status = 'completed' AND payment_method != 'mixed' GROUP BY payment_method"
       )
-      .all(openedAt) as { payment_method: string; total: number; ves: number; count: number }[]
+      .all(openedAt) as { payment_method: string; total: number; ves: number; cop: number; count: number }[]
 
-    const result: SalesByMethod = { cash: 0, card: 0, card_ves: 0, transfer: 0, transfer_ves: 0, credit: 0, count: 0 }
+    const result: SalesByMethod = { cash: 0, card: 0, card_ves: 0, transfer: 0, transfer_ves: 0, transfer_cop: 0, credit: 0, count: 0 }
     for (const row of rows) {
       if (row.payment_method in result) {
-        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'transfer_ves' | 'card_ves'>] = row.total
+        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'transfer_ves' | 'transfer_cop' | 'card_ves'>] = row.total
       }
       if (row.payment_method === 'transfer') {
         result.transfer_ves = row.ves
+        result.transfer_cop = row.cop
       }
       if (row.payment_method === 'card') {
         result.card_ves = row.ves
@@ -187,9 +191,9 @@ export class CashRegisterService {
     // Mixed payment invoices — split amounts by method
     const mixedRows = this.db
       .prepare(
-        "SELECT ip.method as payment_method, SUM(ip.amount) as total, SUM(ip.amount * COALESCE(i.rate_ves, 0)) as ves, COUNT(DISTINCT ip.invoice_id) as count FROM invoice_payments ip JOIN invoices i ON ip.invoice_id = i.id WHERE i.created_at >= ? AND i.status = 'completed' AND i.payment_method = 'mixed' GROUP BY ip.method"
+        "SELECT ip.method as payment_method, SUM(ip.amount) as total, SUM(ip.amount * COALESCE(i.rate_ves, 0)) as ves, SUM(ip.amount * COALESCE(i.rate_cop, 0)) as cop, COUNT(DISTINCT ip.invoice_id) as count FROM invoice_payments ip JOIN invoices i ON ip.invoice_id = i.id WHERE i.created_at >= ? AND i.status = 'completed' AND i.payment_method = 'mixed' GROUP BY ip.method"
       )
-      .all(openedAt) as { payment_method: string; total: number; ves: number; count: number }[]
+      .all(openedAt) as { payment_method: string; total: number; ves: number; cop: number; count: number }[]
 
     const mixedCount = (this.db
       .prepare("SELECT COUNT(*) as count FROM invoices WHERE created_at >= ? AND status = 'completed' AND payment_method = 'mixed'")
@@ -197,10 +201,11 @@ export class CashRegisterService {
 
     for (const row of mixedRows) {
       if (row.payment_method in result) {
-        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'transfer_ves' | 'card_ves'>] += row.total
+        result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'transfer_ves' | 'transfer_cop' | 'card_ves'>] += row.total
       }
       if (row.payment_method === 'transfer') {
         result.transfer_ves += row.ves
+        result.transfer_cop += row.cop
       }
       if (row.payment_method === 'card') {
         result.card_ves += row.ves
