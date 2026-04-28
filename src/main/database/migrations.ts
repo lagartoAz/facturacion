@@ -222,4 +222,13 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 10')
   }
+
+  if (version < 11) {
+    db.exec(`
+      ALTER TABLE invoices ADD COLUMN payment_amount_ves REAL;
+      ALTER TABLE cash_register ADD COLUMN sales_card_ves REAL DEFAULT 0;
+      ALTER TABLE cash_register ADD COLUMN sales_transfer_ves REAL DEFAULT 0;
+    `)
+    db.pragma('user_version = 11')
+  }
 }

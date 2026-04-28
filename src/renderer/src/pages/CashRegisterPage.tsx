@@ -39,7 +39,9 @@ interface CashRegister {
   closing_notes: string | null
   sales_cash: number
   sales_card: number
+  sales_card_ves: number
   sales_transfer: number
+  sales_transfer_ves: number
   sales_credit: number
   total_invoices: number
   expected_cash: number | null
@@ -52,6 +54,7 @@ interface CashRegister {
 interface SessionSales {
   cash: number
   card: number
+  card_ves: number
   transfer: number
   transfer_ves: number
   credit: number
@@ -402,11 +405,12 @@ export default function CashRegisterPage(): JSX.Element {
             </Card>
             <Card>
               <CardHeader className="flex flex-row items-center justify-between py-3">
-                <CardTitle className="text-sm font-medium">Tarjeta</CardTitle>
+                <CardTitle className="text-sm font-medium">Tarjeta (Banco)</CardTitle>
                 <CreditCard className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{formatUSD(sessionSales.card)}</p>
+                <p className="text-2xl font-bold">{formatVES(sessionSales.card_ves)}</p>
+                <p className="text-xs text-muted-foreground">{formatUSD(sessionSales.card)}</p>
               </CardContent>
             </Card>
             <Card>
@@ -513,22 +517,29 @@ export default function CashRegisterPage(): JSX.Element {
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
-                    <th className="text-left p-3 font-medium">Apertura</th>
-                    <th className="text-left p-3 font-medium">Cierre</th>
-                    <th className="text-right p-3 font-medium">Ventas</th>
+                    <th className="text-left p-3 font-medium">Fecha</th>
+                    <th className="text-right p-3 font-medium">Efect. USD</th>
+                    <th className="text-right p-3 font-medium">Efect. VES</th>
+                    <th className="text-right p-3 font-medium">Efect. COP</th>
+                    <th className="text-right p-3 font-medium">Bs Banco</th>
                     <th className="text-right p-3 font-medium">Facturas</th>
-                    <th className="text-right p-3 font-medium">Diferencia USD</th>
+                    <th className="text-right p-3 font-medium">Dif. USD</th>
                     <th className="text-center p-3 font-medium"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {history.map((reg) => {
-                    const totalSales = reg.sales_cash + reg.sales_card + reg.sales_transfer + reg.sales_credit
+                    const totalBsBanco = (reg.sales_card_ves || 0) + (reg.sales_transfer_ves || 0)
                     return (
                       <tr key={reg.id} className="border-t">
-                        <td className="p-3">{format(new Date(reg.opened_at), 'dd/MM HH:mm')}</td>
-                        <td className="p-3">{reg.closed_at ? format(new Date(reg.closed_at), 'dd/MM HH:mm') : '-'}</td>
-                        <td className="p-3 text-right">{formatUSD(totalSales)}</td>
+                        <td className="p-3">
+                          <div>{format(new Date(reg.opened_at), 'dd/MM')}</div>
+                          <div className="text-xs text-muted-foreground">{format(new Date(reg.opened_at), 'HH:mm')}{reg.closed_at ? ` - ${format(new Date(reg.closed_at), 'HH:mm')}` : ''}</div>
+                        </td>
+                        <td className="p-3 text-right">{reg.closing_amount != null ? formatUSD(reg.closing_amount) : '-'}</td>
+                        <td className="p-3 text-right">{reg.closing_amount_ves ? formatVES(reg.closing_amount_ves) : '-'}</td>
+                        <td className="p-3 text-right">{reg.closing_amount_cop ? formatCOP(reg.closing_amount_cop) : '-'}</td>
+                        <td className="p-3 text-right text-blue-500 font-medium">{totalBsBanco > 0 ? formatVES(totalBsBanco) : '-'}</td>
                         <td className="p-3 text-right">{reg.total_invoices}</td>
                         <td className={`p-3 text-right font-medium ${reg.difference != null ? (reg.difference < 0 ? 'text-red-500' : reg.difference > 0 ? 'text-green-500' : '') : ''}`}>
                           {reg.difference != null ? (reg.difference >= 0 ? '+' : '') + formatUSD(reg.difference) : '-'}
@@ -638,21 +649,30 @@ export default function CashRegisterPage(): JSX.Element {
                 </div>
               </div>
 
-              {/* Transfers - go to bank */}
-              {sessionSales.transfer > 0 && (
+              {/* Bank payments (card + transfer) */}
+              {(sessionSales.card > 0 || sessionSales.transfer > 0) && (
                 <>
                   <Separator />
                   <div className="space-y-2 text-sm">
-                    <p className="font-medium text-blue-500">Transferencias (Banco)</p>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total transferencias</span>
-                      <span className="font-medium">{formatVES(sessionSales.transfer_ves)}</span>
+                    <p className="font-medium text-blue-500">Banco (Tarjeta + Transferencia)</p>
+                    {sessionSales.card > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Tarjeta</span>
+                        <span>{formatVES(sessionSales.card_ves)}</span>
+                      </div>
+                    )}
+                    {sessionSales.transfer > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Transferencia</span>
+                        <span>{formatVES(sessionSales.transfer_ves)}</span>
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between font-medium text-blue-500">
+                      <span>Total Bs banco</span>
+                      <span>{formatVES(sessionSales.card_ves + sessionSales.transfer_ves)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Equivalente USD</span>
-                      <span className="text-muted-foreground">{formatUSD(sessionSales.transfer)}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">Las transferencias no afectan el efectivo en caja</p>
+                    <p className="text-xs text-muted-foreground">No afecta el efectivo en caja</p>
                   </div>
                 </>
               )}

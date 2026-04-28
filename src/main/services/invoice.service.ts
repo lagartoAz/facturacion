@@ -19,6 +19,7 @@ export interface CreateInvoiceDTO {
   items: InvoiceItem[]
   paymentMethod: string
   payments?: PaymentSplit[]
+  paymentAmountVes?: number
   notes?: string
 }
 
@@ -36,6 +37,7 @@ export interface Invoice {
   total_ves: number | null
   total_cop: number | null
   payment_method: string
+  payment_amount_ves: number | null
   notes: string | null
   status: string
   created_at: string
@@ -91,8 +93,8 @@ export class InvoiceService {
         .prepare(
           `INSERT INTO invoices (invoice_number, customer_id, subtotal_usd, tax_percent,
             tax_amount_usd, total_usd, rate_ves, rate_cop, total_ves, total_cop,
-            payment_method, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            payment_method, payment_amount_ves, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .run(
           invoiceNumber,
@@ -106,6 +108,7 @@ export class InvoiceService {
           total * rateVes,
           total * rateCop,
           data.paymentMethod,
+          data.paymentAmountVes ?? null,
           data.notes || null
         )
       const invoiceId = result.lastInsertRowid

@@ -91,6 +91,7 @@ export default function PosPage(): JSX.Element {
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  const [paymentVes, setPaymentVes] = useState('')
   const [mixedPayments, setMixedPayments] = useState({ cash: '', card: '', transfer: '', credit: '' })
   const [notification, setNotification] = useState('')
   const [successDialogOpen, setSuccessDialogOpen] = useState(false)
@@ -299,7 +300,8 @@ export default function PosPage(): JSX.Element {
           unitPrice: item.unitPrice,
           isCustom: item.isCustom || false
         })),
-        paymentMethod
+        paymentMethod,
+        paymentAmountVes: (paymentMethod === 'card' || paymentMethod === 'transfer') && paymentVes ? parseFloat(paymentVes) || undefined : undefined
       }
       if (paymentMethod === 'mixed') {
         invoiceData.payments = [
@@ -319,6 +321,7 @@ export default function PosPage(): JSX.Element {
       setSelectedCustomerId(null)
       setPaymentDialogOpen(false)
       setPaymentMethod('cash')
+      setPaymentVes('')
       setMixedPayments({ cash: '', card: '', transfer: '', credit: '' })
 
       if (isStandaloneWindow) {
@@ -629,6 +632,11 @@ export default function PosPage(): JSX.Element {
                       if (method.value !== 'mixed') {
                         setMixedPayments({ cash: '', card: '', transfer: '', credit: '' })
                       }
+                      if (method.value === 'card' || method.value === 'transfer') {
+                        setPaymentVes(String(convertCurrency(total, getRate('VES')).toFixed(2)))
+                      } else {
+                        setPaymentVes('')
+                      }
                     }}
                     className="flex flex-col h-auto py-3"
                   >
@@ -637,6 +645,19 @@ export default function PosPage(): JSX.Element {
                   </Button>
                 ))}
               </div>
+              {(paymentMethod === 'card' || paymentMethod === 'transfer') && (
+                <div className="space-y-1 pt-2">
+                  <label className="text-xs text-muted-foreground">Monto en Bs</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={paymentVes}
+                    onChange={(e) => setPaymentVes(e.target.value)}
+                  />
+                </div>
+              )}
               {paymentMethod === 'mixed' && (
                 <div className="space-y-3 pt-2">
                   <p className="text-xs text-muted-foreground">Distribuya el total entre los metodos de pago</p>
