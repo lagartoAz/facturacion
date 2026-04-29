@@ -248,4 +248,16 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 13')
   }
+
+  if (version < 14) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS pending_carts (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        label       TEXT,
+        cart_data   TEXT NOT NULL,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `)
+    db.pragma('user_version = 14')
+  }
 }

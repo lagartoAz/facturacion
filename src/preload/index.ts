@@ -89,6 +89,12 @@ const api = {
   getCashRegisterWithdrawals: (cashRegisterId: number) =>
     ipcRenderer.invoke('cash-register:getWithdrawals', cashRegisterId),
 
+  // Pending Carts
+  createPendingCart: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke('pending-carts:create', data),
+  getPendingCarts: () => ipcRenderer.invoke('pending-carts:getAll'),
+  deletePendingCart: (id: number) => ipcRenderer.invoke('pending-carts:delete', id),
+
   // Window management
   openPosWindow: () => ipcRenderer.invoke('window:openPos')
 }

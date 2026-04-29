@@ -30,7 +30,9 @@ import {
   UserCheck,
   PlusCircle,
   Layers,
-  Check
+  Check,
+  Pause,
+  Clock
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -74,6 +76,13 @@ interface ExchangeRate {
   rate: number
 }
 
+interface PendingCart {
+  id: number
+  label: string | null
+  cart_data: string
+  created_at: string
+}
+
 export default function PosPage(): JSX.Element {
   const location = useLocation()
   const isStandaloneWindow = location.pathname === '/pos-window'
@@ -100,6 +109,10 @@ export default function PosPage(): JSX.Element {
   const [notification, setNotification] = useState('')
   const [successDialogOpen, setSuccessDialogOpen] = useState(false)
   const [completedInvoice, setCompletedInvoice] = useState<CompletedInvoice | null>(null)
+  const [pendingCarts, setPendingCarts] = useState<PendingCart[]>([])
+  const [pauseDialogOpen, setPauseDialogOpen] = useState(false)
+  const [pauseLabel, setPauseLabel] = useState('')
+  const [pendingCartsOpen, setPendingCartsOpen] = useState(false)
   const barcodeInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -121,12 +134,14 @@ export default function PosPage(): JSX.Element {
   }, [isStandaloneWindow])
 
   async function loadInitialData(): Promise<void> {
-    const [ratesData, customersData] = await Promise.all([
+    const [ratesData, customersData, pendingCartsData] = await Promise.all([
       window.api.getExchangeRates(),
-      window.api.getCustomers()
+      window.api.getCustomers(),
+      window.api.getPendingCarts()
     ])
     setRates(ratesData)
     setCustomers(customersData)
+    setPendingCarts(pendingCartsData)
   }
 
   const getRate = (currency: string): number =>
@@ -267,6 +282,50 @@ export default function PosPage(): JSX.Element {
   function showNotification(msg: string): void {
     setNotification(msg)
     setTimeout(() => setNotification(''), 3000)
+  }
+
+  async function handleConfirmPause(): Promise<void> {
+    try {
+      await window.api.createPendingCart({
+        label: pauseLabel.trim() || undefined,
+        cartItems: cart
+      })
+      setCart([])
+      setPauseLabel('')
+      setPauseDialogOpen(false)
+      const updated = await window.api.getPendingCarts()
+      setPendingCarts(updated)
+      showNotification('Carrito pausado')
+      barcodeInputRef.current?.focus()
+    } catch (err) {
+      showNotification(`Error: ${(err as Error).message}`)
+    }
+  }
+
+  async function handleRestoreCart(pendingCart: PendingCart): Promise<void> {
+    try {
+      const cartItems = JSON.parse(pendingCart.cart_data)
+      setCart(cartItems)
+      await window.api.deletePendingCart(pendingCart.id)
+      const updated = await window.api.getPendingCarts()
+      setPendingCarts(updated)
+      setPendingCartsOpen(false)
+      showNotification('Carrito restaurado')
+      barcodeInputRef.current?.focus()
+    } catch (err) {
+      showNotification(`Error: ${(err as Error).message}`)
+    }
+  }
+
+  async function handleDeletePendingCart(id: number): Promise<void> {
+    try {
+      await window.api.deletePendingCart(id)
+      const updated = await window.api.getPendingCarts()
+      setPendingCarts(updated)
+      showNotification('Carrito eliminado')
+    } catch (err) {
+      showNotification(`Error: ${(err as Error).message}`)
+    }
   }
 
   const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
@@ -507,15 +566,38 @@ export default function PosPage(): JSX.Element {
               <span>{formatCOP(convertCurrency(total, getRate('COP')))}</span>
             </div>
           )}
-          <Button
-            className="w-full mt-3"
-            size="lg"
-            disabled={cart.length === 0}
-            onClick={() => setPaymentDialogOpen(true)}
-          >
-            <DollarSign className="mr-2 h-5 w-5" />
-            Cobrar {formatUSD(total)}
-          </Button>
+          {pendingCarts.length > 0 && (
+            <Button
+              variant="outline"
+              className="w-full mt-3"
+              onClick={() => setPendingCartsOpen(true)}
+            >
+              <Layers className="mr-2 h-4 w-4" />
+              Carritos Pendientes
+              <Badge variant="secondary" className="ml-auto">
+                {pendingCarts.length}
+              </Badge>
+            </Button>
+          )}
+          <div className="flex gap-2 mt-3">
+            <Button
+              variant="outline"
+              disabled={cart.length === 0}
+              onClick={() => setPauseDialogOpen(true)}
+            >
+              <Pause className="mr-2 h-4 w-4" />
+              Pausar
+            </Button>
+            <Button
+              className="flex-1"
+              size="lg"
+              disabled={cart.length === 0}
+              onClick={() => setPaymentDialogOpen(true)}
+            >
+              <DollarSign className="mr-2 h-5 w-5" />
+              Cobrar {formatUSD(total)}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -998,6 +1080,104 @@ export default function PosPage(): JSX.Element {
               disabled={!customNote.trim() || !customAmount || isNaN(parseFloat(customAmount)) || parseFloat(customAmount) <= 0}
             >
               Agregar al Carrito
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pause Cart Dialog */}
+      <Dialog open={pauseDialogOpen} onOpenChange={setPauseDialogOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Pausar Carrito</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); handleConfirmPause() }} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Guarda este carrito para continuarlo mas tarde
+            </p>
+            <div className="space-y-2">
+              <Label>Etiqueta (opcional)</Label>
+              <Input
+                placeholder="Ej: Cliente Juan, Mesa 5..."
+                value={pauseLabel}
+                onChange={(e) => setPauseLabel(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Items en carrito: {cart.length} | Total: {formatUSD(total)}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setPauseDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit">
+                Pausar Carrito
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pending Carts List Dialog */}
+      <Dialog open={pendingCartsOpen} onOpenChange={setPendingCartsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5" />
+              Carritos Pendientes ({pendingCarts.length})
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {pendingCarts.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No hay carritos pendientes
+              </p>
+            ) : (
+              pendingCarts.map((pc) => {
+                const items = JSON.parse(pc.cart_data) as CartItem[]
+                const pcTotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+                return (
+                  <div
+                    key={pc.id}
+                    className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium">
+                        {pc.label || 'Sin etiqueta'}
+                      </p>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {format(new Date(pc.created_at), 'dd/MM/yyyy HH:mm')}
+                      </p>
+                      <p className="text-sm mt-1">
+                        {items.length} items · {formatUSD(pcTotal)}
+                      </p>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        onClick={() => handleRestoreCart(pc)}
+                      >
+                        Restaurar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleDeletePendingCart(pc.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingCartsOpen(false)}>
+              Cerrar
             </Button>
           </DialogFooter>
         </DialogContent>

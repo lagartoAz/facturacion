@@ -528,8 +528,8 @@ export default function CashRegisterPage(): JSX.Element {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="border rounded overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="border rounded overflow-x-auto">
+              <table className="w-full text-sm min-w-[700px]">
                 <thead className="bg-muted/50">
                   <tr>
                     <th className="text-left p-3 font-medium">Fecha</th>
@@ -678,36 +678,48 @@ export default function CashRegisterPage(): JSX.Element {
                 </div>
               </div>
 
-              {/* Bank payments (card + transfer) */}
-              {(sessionSales.card > 0 || sessionSales.transfer > 0) && (
+              {/* Bank payments (card + transfer) in VES */}
+              {(sessionSales.card > 0 || sessionSales.transfer_ves > 0) && (
                 <>
                   <Separator />
                   <div className="space-y-2 text-sm">
-                    <p className="font-medium text-blue-500">Banco (Tarjeta + Transferencia)</p>
+                    <p className="font-medium text-blue-500">Banco Bs (Tarjeta + Transferencia)</p>
                     {sessionSales.card > 0 && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Tarjeta</span>
+                        <span className="text-muted-foreground">Tarjeta Bs</span>
                         <span>{formatVES(sessionSales.card_ves)}</span>
                       </div>
                     )}
-                    {sessionSales.transfer > 0 && (
-                      <>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Transferencia Bs</span>
-                          <span>{formatVES(sessionSales.transfer_ves)}</span>
-                        </div>
-                        {sessionSales.transfer_cop > 0 && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Transferencia COP</span>
-                            <span>{formatCOP(sessionSales.transfer_cop)}</span>
-                          </div>
-                        )}
-                      </>
+                    {sessionSales.transfer_ves > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Transferencia Bs</span>
+                        <span>{formatVES(sessionSales.transfer_ves)}</span>
+                      </div>
                     )}
                     <Separator />
                     <div className="flex justify-between font-medium text-blue-500">
                       <span>Total Bs banco</span>
                       <span>{formatVES(sessionSales.card_ves + sessionSales.transfer_ves)}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">No afecta el efectivo en caja</p>
+                  </div>
+                </>
+              )}
+
+              {/* Bank payments (transfer) in COP */}
+              {sessionSales.transfer_cop > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-2 text-sm">
+                    <p className="font-medium text-blue-500">Banco COP (Transferencia)</p>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Transferencia COP</span>
+                      <span>{formatCOP(sessionSales.transfer_cop)}</span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between font-medium text-blue-500">
+                      <span>Total COP banco</span>
+                      <span>{formatCOP(sessionSales.transfer_cop)}</span>
                     </div>
                     <p className="text-xs text-muted-foreground">No afecta el efectivo en caja</p>
                   </div>
