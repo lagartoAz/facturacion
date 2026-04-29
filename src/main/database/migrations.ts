@@ -255,7 +255,7 @@ export function runMigrations(db: Database.Database): void {
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         label       TEXT,
         cart_data   TEXT NOT NULL,
-        created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
       );
     `)
     db.pragma('user_version = 14')

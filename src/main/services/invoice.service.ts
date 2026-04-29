@@ -97,8 +97,8 @@ export class InvoiceService {
         .prepare(
           `INSERT INTO invoices (invoice_number, customer_id, subtotal_usd, tax_percent,
             tax_amount_usd, total_usd, rate_ves, rate_cop, total_ves, total_cop,
-            payment_method, cash_currency, payment_amount_ves, payment_amount_cop, notes)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            payment_method, cash_currency, payment_amount_ves, payment_amount_cop, notes, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`
         )
         .run(
           invoiceNumber,

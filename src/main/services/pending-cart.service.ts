@@ -26,7 +26,7 @@ export class PendingCartService {
   create(data: CreatePendingCartDTO): PendingCart {
     const cartData = JSON.stringify(data.cartItems)
     const result = this.db
-      .prepare('INSERT INTO pending_carts (label, cart_data) VALUES (?, ?)')
+      .prepare("INSERT INTO pending_carts (label, cart_data, created_at) VALUES (?, ?, datetime('now', 'localtime'))")
       .run(data.label || null, cartData)
 
     return this.db

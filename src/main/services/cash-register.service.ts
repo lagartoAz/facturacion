@@ -80,7 +80,7 @@ export class CashRegisterService {
 
     const result = this.db
       .prepare(
-        'INSERT INTO cash_register (opening_amount, opening_amount_ves, opening_amount_cop, opening_notes) VALUES (?, ?, ?, ?)'
+        "INSERT INTO cash_register (opening_amount, opening_amount_ves, opening_amount_cop, opening_notes, opened_at) VALUES (?, ?, ?, ?, datetime('now', 'localtime'))"
       )
       .run(amounts.usd, amounts.ves, amounts.cop, notes || null)
 
@@ -107,7 +107,7 @@ export class CashRegisterService {
           closing_notes = ?,
           sales_cash = ?, sales_cash_ves = ?, sales_cash_cop = ?, sales_card = ?, sales_card_ves = ?, sales_transfer = ?, sales_transfer_ves = ?, sales_transfer_cop = ?, sales_credit = ?,
           total_invoices = ?, expected_cash = ?, difference = ?,
-          status = 'closed', closed_at = datetime('now')
+          status = 'closed', closed_at = datetime('now', 'localtime')
         WHERE id = ?`
       )
       .run(
@@ -246,7 +246,7 @@ export class CashRegisterService {
     }
 
     const result = this.db
-      .prepare('INSERT INTO cash_register_withdrawals (cash_register_id, amount, reason, currency) VALUES (?, ?, ?, ?)')
+      .prepare("INSERT INTO cash_register_withdrawals (cash_register_id, amount, reason, currency, created_at) VALUES (?, ?, ?, ?, datetime('now', 'localtime'))")
       .run(cashRegisterId, amount, reason, currency)
 
     return this.db

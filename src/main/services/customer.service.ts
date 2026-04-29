@@ -124,7 +124,7 @@ export class CustomerService {
 
   addPayment(customerId: number, amount: number, notes?: string): void {
     this.db.prepare(
-      'INSERT INTO customer_payments (customer_id, amount_usd, notes) VALUES (?, ?, ?)'
+      "INSERT INTO customer_payments (customer_id, amount_usd, notes, created_at) VALUES (?, ?, ?, datetime('now', 'localtime'))"
     ).run(customerId, amount, notes || null)
   }
 
