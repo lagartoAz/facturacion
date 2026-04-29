@@ -639,7 +639,7 @@ export default function CashRegisterPage(): JSX.Element {
             <DialogTitle>Cerrar Caja</DialogTitle>
           </DialogHeader>
           {currentRegister && sessionSales && (
-            <div className="space-y-4">
+            <form onSubmit={(e) => { e.preventDefault(); handleClose() }} className="space-y-4">
               {/* Sales breakdown */}
               <div className="space-y-2 text-sm">
                 <p className="font-medium">Ventas en caja (efectivo)</p>
@@ -880,16 +880,16 @@ export default function CashRegisterPage(): JSX.Element {
                   onChange={(e) => setCloseNotes(e.target.value)}
                 />
               </div>
-            </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setCloseDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button type="submit" variant="destructive">
+                  Confirmar Cierre
+                </Button>
+              </DialogFooter>
+            </form>
           )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCloseDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button variant="destructive" onClick={handleClose}>
-              Confirmar Cierre
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
