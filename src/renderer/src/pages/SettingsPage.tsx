@@ -4,7 +4,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Save } from 'lucide-react'
+import { Save, Clock } from 'lucide-react'
+import { format } from 'date-fns'
+
+const APP_VERSION = '1.7.2'
 
 export default function SettingsPage(): JSX.Element {
   const [rateVes, setRateVes] = useState('')
@@ -14,9 +17,12 @@ export default function SettingsPage(): JSX.Element {
   const [businessAddress, setBusinessAddress] = useState('')
   const [businessPhone, setBusinessPhone] = useState('')
   const [saved, setSaved] = useState(false)
+  const [currentTime, setCurrentTime] = useState(new Date())
 
   useEffect(() => {
     loadSettings()
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
   }, [])
 
   async function loadSettings(): Promise<void> {
@@ -141,8 +147,29 @@ export default function SettingsPage(): JSX.Element {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Hora del Sistema
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="text-3xl font-mono font-bold text-center">
+            {format(currentTime, 'HH:mm:ss')}
+          </div>
+          <div className="text-center text-sm text-muted-foreground">
+            {format(currentTime, 'dd/MM/yyyy')}
+          </div>
+          <Separator />
+          <p className="text-xs text-muted-foreground">
+            La app usa la hora de tu computadora. Si la hora no es correcta, ajustala desde la configuracion de fecha y hora de Windows.
+          </p>
+        </CardContent>
+      </Card>
+
       <div className="text-center text-sm text-muted-foreground pt-4">
-        App desarrollada por El Garaje Gamer
+        App desarrollada por El Garaje Gamer · v{APP_VERSION}
       </div>
 
       {saved && (
