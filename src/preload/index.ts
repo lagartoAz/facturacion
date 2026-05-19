@@ -95,8 +95,50 @@ const api = {
   getPendingCarts: () => ipcRenderer.invoke('pending-carts:getAll'),
   deletePendingCart: (id: number) => ipcRenderer.invoke('pending-carts:delete', id),
 
+  // Quotes (Presupuestos)
+  createQuote: (data: Record<string, unknown>) => ipcRenderer.invoke('quotes:create', data),
+  getQuotes: (filters?: Record<string, unknown>) => ipcRenderer.invoke('quotes:getAll', filters),
+  getQuoteById: (id: number) => ipcRenderer.invoke('quotes:getById', id),
+  deleteQuote: (id: number) => ipcRenderer.invoke('quotes:delete', id),
+  quoteToCart: (id: number) => ipcRenderer.invoke('quotes:toCart', id),
+
+  // Database location
+  getDbInfo: (): Promise<{ currentPath: string; defaultPath: string; isDefault: boolean }> =>
+    ipcRenderer.invoke('db:getInfo'),
+  changeDbLocation: (): Promise<{
+    success?: boolean
+    canceled?: boolean
+    error?: string
+    newPath?: string
+  }> => ipcRenderer.invoke('db:changeLocation'),
+  resetDbLocation: (): Promise<{
+    success?: boolean
+    error?: string
+    newPath?: string
+  }> => ipcRenderer.invoke('db:resetToDefault'),
+
   // Window management
-  openPosWindow: () => ipcRenderer.invoke('window:openPos')
+  openPosWindow: () => ipcRenderer.invoke('window:openPos'),
+
+  // Backups
+  backupNow: () => ipcRenderer.invoke('backup:now'),
+  listBackups: () => ipcRenderer.invoke('backup:list'),
+  openBackupFolder: () => ipcRenderer.invoke('backup:openFolder'),
+  getBackupDir: () => ipcRenderer.invoke('backup:getDir'),
+
+  // USB license
+  getUsbStatus: () => ipcRenderer.invoke('usb:getStatus'),
+
+  // Export
+  exportInventory: (): Promise<string | null> => ipcRenderer.invoke('export:inventory'),
+  exportInvoices: (): Promise<string | null> => ipcRenderer.invoke('export:invoices'),
+
+  // Import
+  importInventory: (): Promise<{
+    added: number
+    updated: number
+    errors: { row: number; reason: string }[]
+  } | null> => ipcRenderer.invoke('import:inventory')
 }
 
 contextBridge.exposeInMainWorld('api', api)

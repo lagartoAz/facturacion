@@ -5,6 +5,7 @@ import {
   OpenAmounts,
   CloseAmounts
 } from '../services/cash-register.service'
+import { getBackupService } from '../services/backup.service'
 
 export function registerCashRegisterHandlers(db: Database.Database): void {
   const service = new CashRegisterService(db)
@@ -14,11 +15,15 @@ export function registerCashRegisterHandlers(db: Database.Database): void {
   })
 
   ipcMain.handle('cash-register:open', (_event, amounts: OpenAmounts, notes?: string) => {
-    return service.open(amounts, notes)
+    const result = service.open(amounts, notes)
+    getBackupService().schedule()
+    return result
   })
 
   ipcMain.handle('cash-register:close', (_event, countedAmounts: CloseAmounts, notes?: string) => {
-    return service.close(countedAmounts, notes)
+    const result = service.close(countedAmounts, notes)
+    getBackupService().schedule()
+    return result
   })
 
   ipcMain.handle('cash-register:getHistory', () => {
@@ -32,14 +37,18 @@ export function registerCashRegisterHandlers(db: Database.Database): void {
   ipcMain.handle(
     'cash-register:update',
     (_event, id: number, amounts: CloseAmounts, notes?: string) => {
-      return service.update(id, amounts, notes)
+      const result = service.update(id, amounts, notes)
+      getBackupService().schedule()
+      return result
     }
   )
 
   ipcMain.handle(
     'cash-register:addWithdrawal',
     (_event, cashRegisterId: number, amount: number, reason: string, currency: string) => {
-      return service.addWithdrawal(cashRegisterId, amount, reason, currency)
+      const result = service.addWithdrawal(cashRegisterId, amount, reason, currency)
+      getBackupService().schedule()
+      return result
     }
   )
 

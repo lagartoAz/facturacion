@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import { ProductService } from '../services/product.service'
 import type { CreateProductDTO, UpdateProductDTO, ProductFilters } from '../services/product.service'
+import { getBackupService } from '../services/backup.service'
 
 export function registerProductHandlers(db: Database.Database): void {
   const service = new ProductService(db)
@@ -19,15 +20,20 @@ export function registerProductHandlers(db: Database.Database): void {
   })
 
   ipcMain.handle('products:create', (_event, data: CreateProductDTO) => {
-    return service.create(data)
+    const result = service.create(data)
+    getBackupService().schedule()
+    return result
   })
 
   ipcMain.handle('products:update', (_event, id: number, data: UpdateProductDTO) => {
-    return service.update(id, data)
+    const result = service.update(id, data)
+    getBackupService().schedule()
+    return result
   })
 
   ipcMain.handle('products:toggleActive', (_event, id: number) => {
     service.toggleActive(id)
+    getBackupService().schedule()
   })
 
   ipcMain.handle('products:saveImage', (_event, productId: number, imageData: string, extension: string) => {
@@ -47,6 +53,8 @@ export function registerProductHandlers(db: Database.Database): void {
   })
 
   ipcMain.handle('categories:create', (_event, name: string) => {
-    return service.createCategory(name)
+    const result = service.createCategory(name)
+    getBackupService().schedule()
+    return result
   })
 }

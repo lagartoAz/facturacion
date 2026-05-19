@@ -6,6 +6,11 @@ import { registerReportHandlers } from './reports.ipc'
 import { registerSettingsHandlers } from './settings.ipc'
 import { registerCashRegisterHandlers } from './cash-register.ipc'
 import { registerPendingCartHandlers } from './pending-cart.ipc'
+import { registerBackupHandlers } from './backup.ipc'
+import { registerUsbHandlers } from './usb.ipc'
+import { registerExportHandlers } from './export.ipc'
+import { registerQuoteHandlers } from './quotes.ipc'
+import { registerDbLocationHandlers } from './db-location.ipc'
 
 export function registerAllHandlers(db: Database.Database): void {
   registerProductHandlers(db)
@@ -15,4 +20,9 @@ export function registerAllHandlers(db: Database.Database): void {
   registerSettingsHandlers(db)
   registerCashRegisterHandlers(db)
   registerPendingCartHandlers(db)
+  registerBackupHandlers()
+  registerUsbHandlers()
+  registerExportHandlers(db)
+  registerQuoteHandlers(db)
+  registerDbLocationHandlers()
 }

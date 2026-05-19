@@ -21,10 +21,22 @@ linux:
 win:
   target:
     - nsis
+    - portable
 nsis:
-  oneClick: true
-  allowToChangeInstallationDirectory: false
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
   deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
+  installerLanguages:
+    - es_ES
+    - en_US
+portable:
+  artifactName: FacturacionPOS-USB-${version}.exe
+  requestExecutionLevel: user
 mac:
   target:
     - dmg

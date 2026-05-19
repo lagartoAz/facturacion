@@ -4,10 +4,38 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Save, Clock } from 'lucide-react'
+import { Save, Clock, ShieldCheck, FolderOpen, HardDrive, Usb, FileSpreadsheet, Package, FileText, Upload, AlertTriangle, Database, MoveRight } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from '@/components/ui/dialog'
 import { format } from 'date-fns'
 
-const APP_VERSION = '1.7.2'
+interface BackupEntry {
+  name: string
+  path: string
+  size: number
+  createdAt: string
+}
+
+interface UsbStatus {
+  portable: boolean
+  usbDir: string | null
+  connected: boolean
+  licenseOk: boolean
+  licensePath: string | null
+}
+
+interface DbInfo {
+  currentPath: string
+  defaultPath: string
+  isDefault: boolean
+}
+
+const APP_VERSION = '1.8.0'
 
 export default function SettingsPage(): JSX.Element {
   const [rateVes, setRateVes] = useState('')
@@ -18,12 +46,154 @@ export default function SettingsPage(): JSX.Element {
   const [businessPhone, setBusinessPhone] = useState('')
   const [saved, setSaved] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [backups, setBackups] = useState<BackupEntry[]>([])
+  const [backupDir, setBackupDir] = useState('')
+  const [backingUp, setBackingUp] = useState(false)
+  const [usbStatus, setUsbStatus] = useState<UsbStatus | null>(null)
+  const [exporting, setExporting] = useState<'inventory' | 'invoices' | null>(null)
+  const [exportMsg, setExportMsg] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importConfirmOpen, setImportConfirmOpen] = useState(false)
+  const [importResult, setImportResult] = useState<{
+    added: number
+    updated: number
+    errors: { row: number; reason: string }[]
+  } | null>(null)
+  const [importResultOpen, setImportResultOpen] = useState(false)
+  const [dbInfo, setDbInfo] = useState<DbInfo | null>(null)
+  const [movingDb, setMovingDb] = useState(false)
+  const [dbMessage, setDbMessage] = useState('')
 
   useEffect(() => {
     loadSettings()
+    loadBackups()
+    loadUsbStatus()
+    loadDbInfo()
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
+    const usbTimer = setInterval(loadUsbStatus, 5000)
+    return () => {
+      clearInterval(timer)
+      clearInterval(usbTimer)
+    }
   }, [])
+
+  async function loadDbInfo(): Promise<void> {
+    setDbInfo(await window.api.getDbInfo())
+  }
+
+  async function handleChangeDbLocation(): Promise<void> {
+    if (
+      !confirm(
+        'La aplicacion se reiniciara despues de mover la base de datos. Continuar?'
+      )
+    ) {
+      return
+    }
+    setMovingDb(true)
+    setDbMessage('')
+    try {
+      const result = await window.api.changeDbLocation()
+      if (result.canceled) {
+        setDbMessage('Operacion cancelada')
+      } else if (result.error) {
+        setDbMessage(`Error: ${result.error}`)
+      } else if (result.success) {
+        setDbMessage(`Movida a ${result.newPath}. Reiniciando...`)
+      }
+    } finally {
+      setMovingDb(false)
+      setTimeout(() => setDbMessage(''), 6000)
+    }
+  }
+
+  async function handleResetDbLocation(): Promise<void> {
+    if (!confirm('Volver la base de datos a la ubicacion por defecto?')) return
+    setMovingDb(true)
+    setDbMessage('')
+    try {
+      const result = await window.api.resetDbLocation()
+      if (result.error) setDbMessage(`Error: ${result.error}`)
+      else if (result.success) setDbMessage(`Movida a ${result.newPath}. Reiniciando...`)
+    } finally {
+      setMovingDb(false)
+      setTimeout(() => setDbMessage(''), 6000)
+    }
+  }
+
+  async function loadUsbStatus(): Promise<void> {
+    const status = await window.api.getUsbStatus()
+    setUsbStatus(status)
+  }
+
+  async function loadBackups(): Promise<void> {
+    const [list, dir] = await Promise.all([
+      window.api.listBackups(),
+      window.api.getBackupDir()
+    ])
+    setBackups(list)
+    setBackupDir(dir)
+  }
+
+  async function handleBackupNow(): Promise<void> {
+    setBackingUp(true)
+    try {
+      await window.api.backupNow()
+      await loadBackups()
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    } finally {
+      setBackingUp(false)
+    }
+  }
+
+  function formatSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  async function handleImport(): Promise<void> {
+    setImportConfirmOpen(false)
+    setImporting(true)
+    try {
+      const result = await window.api.importInventory()
+      if (result) {
+        setImportResult(result)
+        setImportResultOpen(true)
+        await loadBackups()
+      }
+    } catch (err) {
+      setImportResult({
+        added: 0,
+        updated: 0,
+        errors: [{ row: 0, reason: (err as Error).message }]
+      })
+      setImportResultOpen(true)
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function handleExport(kind: 'inventory' | 'invoices'): Promise<void> {
+    setExporting(kind)
+    setExportMsg('')
+    try {
+      const path =
+        kind === 'inventory'
+          ? await window.api.exportInventory()
+          : await window.api.exportInvoices()
+      if (path) {
+        setExportMsg(`Archivo guardado en: ${path}`)
+      } else {
+        setExportMsg('Exportacion cancelada')
+      }
+    } catch (err) {
+      setExportMsg(`Error: ${(err as Error).message}`)
+    } finally {
+      setExporting(null)
+      setTimeout(() => setExportMsg(''), 5000)
+    }
+  }
 
   async function loadSettings(): Promise<void> {
     const [rates, settings] = await Promise.all([
@@ -167,6 +337,300 @@ export default function SettingsPage(): JSX.Element {
           </p>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5" />
+            Exportar / Importar Excel
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Exporta tus datos como CSV (Excel los abre directamente) o restaura inventario desde un CSV.
+          </p>
+          <div className="grid grid-cols-3 gap-3">
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col gap-2"
+              onClick={() => handleExport('inventory')}
+              disabled={exporting !== null || importing}
+            >
+              <Package className="h-6 w-6" />
+              <span className="font-medium text-sm">
+                {exporting === 'inventory' ? 'Exportando...' : 'Exportar Inventario'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Todos los productos
+              </span>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col gap-2"
+              onClick={() => handleExport('invoices')}
+              disabled={exporting !== null || importing}
+            >
+              <FileText className="h-6 w-6" />
+              <span className="font-medium text-sm">
+                {exporting === 'invoices' ? 'Exportando...' : 'Exportar Facturas'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Historial completo
+              </span>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex flex-col gap-2 border-blue-500/40 hover:bg-blue-500/10"
+              onClick={() => setImportConfirmOpen(true)}
+              disabled={exporting !== null || importing}
+            >
+              <Upload className="h-6 w-6 text-blue-500" />
+              <span className="font-medium text-sm">
+                {importing ? 'Importando...' : 'Importar Inventario'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Restaurar desde CSV
+              </span>
+            </Button>
+          </div>
+          {exportMsg && (
+            <p className="text-xs text-muted-foreground break-all border-t pt-2">
+              {exportMsg}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Import Confirm Dialog */}
+      <Dialog open={importConfirmOpen} onOpenChange={setImportConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Importar Inventario
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-sm">
+            <p>
+              Selecciona un archivo CSV con la misma estructura que el export de inventario.
+            </p>
+            <div className="bg-muted/50 p-3 rounded-md space-y-1 text-xs">
+              <p className="font-medium">Comportamiento:</p>
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li>Si el codigo de barras coincide con un producto existente, se actualizara.</li>
+                <li>Si no coincide pero el nombre si, tambien se actualizara.</li>
+                <li>Si no coincide nada, se creara como producto nuevo.</li>
+                <li>Las categorias nuevas se crean automaticamente.</li>
+              </ul>
+            </div>
+            <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-md text-xs">
+              <p className="font-medium text-amber-600 dark:text-amber-400">
+                Se hace un respaldo automatico antes y despues de importar.
+              </p>
+              <p className="text-muted-foreground mt-1">
+                Si algo sale mal, puedes restaurar el .db anterior desde la carpeta de respaldos.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportConfirmOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleImport}>
+              <Upload className="mr-2 h-4 w-4" />
+              Seleccionar archivo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Result Dialog */}
+      <Dialog open={importResultOpen} onOpenChange={setImportResultOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Resultado de la Importacion</DialogTitle>
+          </DialogHeader>
+          {importResult && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-3 rounded-md bg-green-500/10 border border-green-500/30">
+                  <p className="text-2xl font-bold text-green-600">{importResult.added}</p>
+                  <p className="text-xs text-muted-foreground">Productos agregados</p>
+                </div>
+                <div className="p-3 rounded-md bg-blue-500/10 border border-blue-500/30">
+                  <p className="text-2xl font-bold text-blue-600">{importResult.updated}</p>
+                  <p className="text-xs text-muted-foreground">Actualizados</p>
+                </div>
+                <div className="p-3 rounded-md bg-red-500/10 border border-red-500/30">
+                  <p className="text-2xl font-bold text-red-600">{importResult.errors.length}</p>
+                  <p className="text-xs text-muted-foreground">Errores</p>
+                </div>
+              </div>
+              {importResult.errors.length > 0 && (
+                <div className="border rounded-md max-h-48 overflow-y-auto">
+                  <p className="text-xs font-medium p-2 border-b bg-muted/50">Detalles de errores:</p>
+                  {importResult.errors.map((e, idx) => (
+                    <p key={idx} className="text-xs px-2 py-1 border-b last:border-0">
+                      <span className="font-mono text-muted-foreground">Fila {e.row}:</span> {e.reason}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setImportResultOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Ubicacion de la Base de Datos
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Aqui se guardan todas tus ventas, productos, clientes y configuraciones.
+            Puedes moverla a otro disco o USB sin perder datos. La app se reiniciara automaticamente.
+          </p>
+          {dbInfo && (
+            <div className="space-y-2 text-sm">
+              <div className="rounded-md border p-3 bg-muted/30">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
+                  Ubicacion actual
+                </p>
+                <p className="font-mono break-all">{dbInfo.currentPath}</p>
+                {!dbInfo.isDefault && (
+                  <p className="text-xs text-blue-500 mt-1">Ubicacion personalizada</p>
+                )}
+              </div>
+              {!dbInfo.isDefault && (
+                <p className="text-xs text-muted-foreground">
+                  Por defecto: <span className="font-mono">{dbInfo.defaultPath}</span>
+                </p>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleChangeDbLocation} size="sm" disabled={movingDb}>
+              <MoveRight className="mr-2 h-4 w-4" />
+              {movingDb ? 'Moviendo...' : 'Cambiar Ubicacion'}
+            </Button>
+            {dbInfo && !dbInfo.isDefault && (
+              <Button
+                onClick={handleResetDbLocation}
+                size="sm"
+                variant="outline"
+                disabled={movingDb}
+              >
+                Volver al Lugar por Defecto
+              </Button>
+            )}
+          </div>
+          <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-md text-xs space-y-1">
+            <p className="font-medium text-amber-600 dark:text-amber-400">
+              Antes de mover se crea un respaldo automatico.
+            </p>
+            <p className="text-muted-foreground">
+              Si eliges una carpeta en un USB, recuerda que la app no podra abrirse si el USB
+              no esta conectado. Para mas seguridad, deja la DB en el disco interno y solo guarda
+              respaldos en el USB.
+            </p>
+          </div>
+          {dbMessage && (
+            <p className="text-xs text-muted-foreground break-all border-t pt-2">
+              {dbMessage}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5" />
+            Respaldos Automaticos
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Cada venta y cambio de inventario genera un respaldo automatico (se conservan los ultimos 50).
+            Si se va la luz o el sistema falla, puedes restaurar copiando uno de estos archivos sobre el original.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleBackupNow} size="sm" disabled={backingUp}>
+              <HardDrive className="mr-2 h-4 w-4" />
+              {backingUp ? 'Respaldando...' : 'Respaldar Ahora'}
+            </Button>
+            <Button onClick={() => window.api.openBackupFolder()} size="sm" variant="outline">
+              <FolderOpen className="mr-2 h-4 w-4" />
+              Abrir Carpeta
+            </Button>
+          </div>
+          {backupDir && (
+            <p className="text-xs text-muted-foreground break-all">
+              Carpeta: {backupDir}
+            </p>
+          )}
+          <Separator />
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {backups.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay respaldos aun.</p>
+            ) : (
+              backups.slice(0, 10).map((b) => (
+                <div key={b.path} className="flex justify-between items-center text-xs py-1 border-b last:border-0">
+                  <span className="font-mono">{format(new Date(b.createdAt), 'dd/MM/yyyy HH:mm:ss')}</span>
+                  <span className="text-muted-foreground">{formatSize(b.size)}</span>
+                </div>
+              ))
+            )}
+            {backups.length > 10 && (
+              <p className="text-xs text-muted-foreground pt-1">
+                + {backups.length - 10} respaldos mas
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {usbStatus?.portable && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Usb className="h-5 w-5" />
+              Llave USB
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  usbStatus.connected && usbStatus.licenseOk ? 'bg-green-500' : 'bg-red-500'
+                }`}
+              />
+              <span className="text-sm font-medium">
+                {usbStatus.connected && usbStatus.licenseOk
+                  ? 'USB conectado y autorizado'
+                  : !usbStatus.connected
+                    ? 'USB desconectado'
+                    : 'Licencia invalida en el USB'}
+              </span>
+            </div>
+            {usbStatus.usbDir && (
+              <p className="text-xs text-muted-foreground break-all">
+                Ubicacion: {usbStatus.usbDir}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              La aplicacion verifica el USB cada 5 segundos. Si se desconecta, se cerrara automaticamente.
+              La base de datos y respaldos permanecen en esta PC.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="text-center text-sm text-muted-foreground pt-4">
         App desarrollada por El Garaje Gamer · v{APP_VERSION}

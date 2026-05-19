@@ -1,9 +1,18 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
+import { homedir } from 'os'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { initDatabase } from './database/connection'
 import { runMigrations } from './database/migrations'
 import { registerAllHandlers } from './ipc'
+import { initBackupService } from './services/backup.service'
+import { verifyAtStartup, startWatchdog, isPortable } from './services/usb.service'
+import { clearDbPath, getDbPath } from './services/db-location.service'
+
+// Always store the database and backups on the PC's home directory, even when
+// the binary is launched from a USB. This way the data never travels with the
+// USB and each PC keeps its own local database.
+app.setPath('userData', join(homedir(), '.facturacion-pos'))
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -61,13 +70,38 @@ function createPosWindow(): void {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.facturacion')
 
+  // USB enforcement (portable builds only). No-op for installed/dev builds.
+  if (!verifyAtStartup()) {
+    app.quit()
+    return
+  }
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // Initialize database
-  const db = initDatabase()
-  runMigrations(db)
+  // Initialize database. If it fails (e.g. user moved DB to a USB and it's not
+  // connected right now), fall back to the default location on next launch.
+  let db: ReturnType<typeof initDatabase>
+  try {
+    db = initDatabase()
+    runMigrations(db)
+  } catch (err) {
+    dialog.showErrorBox(
+      'No se pudo abrir la base de datos',
+      `Ruta: ${getDbPath()}\n\n` +
+        `Causa: ${(err as Error).message}\n\n` +
+        `Posibles motivos: el disco/USB no esta conectado, sin permisos, o el archivo esta corrupto.\n\n` +
+        `Al reiniciar la app volvera a usar la ubicacion por defecto. Tus respaldos siguen disponibles.`
+    )
+    clearDbPath()
+    app.relaunch()
+    app.exit(1)
+    return
+  }
+
+  // Initialize backup service (writes copies to userData/backups, rotates last 50)
+  initBackupService(db)
 
   // Register IPC handlers
   registerAllHandlers(db)
@@ -78,6 +112,19 @@ app.whenReady().then(() => {
   })
 
   createWindow()
+
+  // Watch the USB; if it gets unplugged while running, close the app to keep
+  // the in-memory state from being silently lost when the binary's source disk
+  // vanishes mid-operation.
+  if (isPortable()) {
+    startWatchdog(() => {
+      dialog.showErrorBox(
+        'USB desconectado',
+        'El USB de la aplicacion fue removido. La aplicacion se cerrara.\nLos datos guardados en esta PC estan a salvo.'
+      )
+      app.quit()
+    })
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

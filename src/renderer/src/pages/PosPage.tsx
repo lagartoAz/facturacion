@@ -68,6 +68,10 @@ interface CompletedInvoice {
   total_ves: number | null
   total_cop: number | null
   payment_method: string
+  cash_currency: string | null
+  payment_amount_ves: number | null
+  payment_amount_cop: number | null
+  payments?: { method: string; amount: number }[]
   created_at: string
   items: { product_name: string; quantity: number; unit_price: number; subtotal: number }[]
 }
@@ -82,6 +86,60 @@ interface PendingCart {
   label: string | null
   cart_data: string
   created_at: string
+}
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  cash: 'Efectivo',
+  card: 'Tarjeta',
+  transfer: 'Transferencia',
+  credit: 'Credito',
+  mixed: 'Pago Mixto'
+}
+
+interface PaymentLine {
+  label: string
+  amount: string
+}
+
+function getPaymentSummary(inv: CompletedInvoice): { title: string; lines: PaymentLine[] } {
+  const title = PAYMENT_METHOD_LABEL[inv.payment_method] ?? inv.payment_method
+
+  if (inv.payment_method === 'cash') {
+    let amount = formatUSD(inv.total_usd)
+    if (inv.cash_currency === 'VES' && inv.total_ves) amount = formatVES(inv.total_ves)
+    else if (inv.cash_currency === 'COP' && inv.total_cop) amount = formatCOP(inv.total_cop)
+    return { title, lines: [{ label: 'Efectivo recibido', amount }] }
+  }
+
+  if (inv.payment_method === 'card') {
+    const amount = inv.payment_amount_ves
+      ? formatVES(inv.payment_amount_ves)
+      : formatUSD(inv.total_usd)
+    return { title, lines: [{ label: 'Cobrado en tarjeta', amount }] }
+  }
+
+  if (inv.payment_method === 'transfer') {
+    let amount = formatUSD(inv.total_usd)
+    if (inv.payment_amount_ves) amount = formatVES(inv.payment_amount_ves)
+    else if (inv.payment_amount_cop) amount = formatCOP(inv.payment_amount_cop)
+    return { title, lines: [{ label: 'Transferido', amount }] }
+  }
+
+  if (inv.payment_method === 'credit') {
+    return { title, lines: [{ label: 'Monto fiado', amount: formatUSD(inv.total_usd) }] }
+  }
+
+  if (inv.payment_method === 'mixed' && inv.payments) {
+    return {
+      title,
+      lines: inv.payments.map((p) => ({
+        label: PAYMENT_METHOD_LABEL[p.method] ?? p.method,
+        amount: formatUSD(p.amount)
+      }))
+    }
+  }
+
+  return { title, lines: [{ label: 'Total', amount: formatUSD(inv.total_usd) }] }
 }
 
 export default function PosPage(): JSX.Element {
@@ -426,6 +484,16 @@ export default function PosPage(): JSX.Element {
       )
       .join('')
 
+    const summary = getPaymentSummary(inv)
+    const paymentLinesHtml = summary.lines
+      .map((line) => {
+        if (summary.lines.length > 1) {
+          return `<div class="center">${line.label}: ${line.amount}</div>`
+        }
+        return `<div class="center bold">${line.amount}</div>`
+      })
+      .join('')
+
     printWindow.document.write(`
       <html><head><title>${inv.invoice_number}</title>
       <style>
@@ -435,6 +503,7 @@ export default function PosPage(): JSX.Element {
         .center { text-align: center; }
         .right { text-align: right; }
         .bold { font-weight: bold; }
+        .label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
       </style></head><body>
         <div class="center bold">${inv.invoice_number}</div>
         <div class="center">${format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm')}</div>
@@ -449,7 +518,8 @@ export default function PosPage(): JSX.Element {
         ${inv.total_ves ? `<div class="right">Bs. ${inv.total_ves.toFixed(2)} (Tasa: ${inv.rate_ves?.toFixed(2)})</div>` : ''}
         ${inv.total_cop ? `<div class="right">COP ${Math.round(inv.total_cop)} (Tasa: ${inv.rate_cop?.toFixed(0)})</div>` : ''}
         <div class="divider"></div>
-        <div class="center">Pago: ${inv.payment_method}</div>
+        <div class="center label">Compra realizada en ${summary.title}</div>
+        ${paymentLinesHtml}
         <div class="center" style="margin-top:10px">Gracias por su compra!</div>
       </body></html>
     `)
@@ -503,6 +573,18 @@ export default function PosPage(): JSX.Element {
                     <p className="text-sm text-muted-foreground">
                       {item.isCustom ? 'Ingreso personalizado' : `${formatUSD(item.unitPrice)}${item.isByWeight ? '/kg' : ' c/u'}`}
                     </p>
+                    {!item.isCustom && (getRate('VES') > 0 || getRate('COP') > 0) && (
+                      <p className="text-xs text-muted-foreground/80">
+                        {getRate('VES') > 0 && (
+                          <span>{formatVES(convertCurrency(item.unitPrice, getRate('VES')))}</span>
+                        )}
+                        {getRate('VES') > 0 && getRate('COP') > 0 && <span> · </span>}
+                        {getRate('COP') > 0 && (
+                          <span>{formatCOP(convertCurrency(item.unitPrice, getRate('COP')))}</span>
+                        )}
+                        {item.isByWeight ? '/kg' : ' c/u'}
+                      </p>
+                    )}
                   </div>
                   {item.isCustom ? (
                     <span className="text-sm font-medium text-blue-500">
@@ -532,9 +614,25 @@ export default function PosPage(): JSX.Element {
                       </Button>
                     </div>
                   )}
-                  <p className="w-20 text-right font-semibold">
-                    {formatUSD(item.unitPrice * item.quantity)}
-                  </p>
+                  <div className="w-28 text-right">
+                    <p className="font-semibold">
+                      {formatUSD(item.unitPrice * item.quantity)}
+                    </p>
+                    {(getRate('VES') > 0 || getRate('COP') > 0) && (
+                      <p className="text-xs text-muted-foreground/80 leading-tight">
+                        {getRate('VES') > 0 && (
+                          <span className="block">
+                            {formatVES(convertCurrency(item.unitPrice * item.quantity, getRate('VES')))}
+                          </span>
+                        )}
+                        {getRate('COP') > 0 && (
+                          <span className="block">
+                            {formatCOP(convertCurrency(item.unitPrice * item.quantity, getRate('COP')))}
+                          </span>
+                        )}
+                      </p>
+                    )}
+                  </div>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -944,48 +1042,64 @@ export default function PosPage(): JSX.Element {
               Venta Registrada
             </DialogTitle>
           </DialogHeader>
-          {completedInvoice && (
-            <div className="space-y-4">
-              <div className="text-center space-y-1">
-                <p className="text-sm text-muted-foreground">
-                  {completedInvoice.invoice_number}
-                </p>
-                <p className="text-3xl font-bold text-green-600">
-                  {formatUSD(completedInvoice.total_usd)}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {completedInvoice.total_ves
-                    ? formatVES(completedInvoice.total_ves)
-                    : ''}{' '}
-                  |{' '}
-                  {completedInvoice.total_cop
-                    ? formatCOP(completedInvoice.total_cop)
-                    : ''}
-                </p>
+          {completedInvoice && (() => {
+            const summary = getPaymentSummary(completedInvoice)
+            return (
+              <div className="space-y-4">
+                <div className="text-center space-y-1">
+                  <p className="text-sm text-muted-foreground">
+                    {completedInvoice.invoice_number}
+                  </p>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Total
+                  </p>
+                  <p className="text-4xl font-bold text-green-600">
+                    {formatUSD(completedInvoice.total_usd)}
+                  </p>
+                </div>
+
+                <div className="rounded-lg border bg-muted/40 p-3 text-center space-y-1">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Compra realizada en {summary.title}
+                  </p>
+                  {summary.lines.map((line, idx) => (
+                    <p key={idx} className="text-lg font-semibold">
+                      {line.amount}
+                      {summary.lines.length > 1 && (
+                        <span className="text-xs text-muted-foreground font-normal ml-2">
+                          ({line.label})
+                        </span>
+                      )}
+                    </p>
+                  ))}
+                  {(completedInvoice.total_ves || completedInvoice.total_cop) && (
+                    <p className="text-xs text-muted-foreground pt-1">
+                      Equivalencias:{' '}
+                      {completedInvoice.total_ves
+                        ? formatVES(completedInvoice.total_ves)
+                        : ''}
+                      {completedInvoice.total_ves && completedInvoice.total_cop ? ' · ' : ''}
+                      {completedInvoice.total_cop
+                        ? formatCOP(completedInvoice.total_cop)
+                        : ''}
+                    </p>
+                  )}
+                </div>
+
+                <Separator />
+                <div className="text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Cliente</span>
+                    <span>{completedInvoice.customer_name || 'Consumidor Final'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Items</span>
+                    <span>{completedInvoice.items.length} productos</span>
+                  </div>
+                </div>
               </div>
-              <Separator />
-              <div className="text-sm space-y-1">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Cliente</span>
-                  <span>{completedInvoice.customer_name || 'Consumidor Final'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Items</span>
-                  <span>{completedInvoice.items.length} productos</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Pago</span>
-                  <span>
-                    {completedInvoice.payment_method === 'cash'
-                      ? 'Efectivo'
-                      : completedInvoice.payment_method === 'card'
-                        ? 'Tarjeta'
-                        : 'Transferencia'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
+            )
+          })()}
           <DialogFooter className="flex gap-2 sm:gap-2">
             <Button variant="outline" onClick={handleCloseSuccess} className="flex-1">
               Continuar sin imprimir

@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import { CustomerService } from '../services/customer.service'
 import type { CreateCustomerDTO, UpdateCustomerDTO } from '../services/customer.service'
+import { getBackupService } from '../services/backup.service'
 
 export function registerCustomerHandlers(db: Database.Database): void {
   const service = new CustomerService(db)
@@ -11,15 +12,20 @@ export function registerCustomerHandlers(db: Database.Database): void {
   })
 
   ipcMain.handle('customers:create', (_event, data: CreateCustomerDTO) => {
-    return service.create(data)
+    const result = service.create(data)
+    getBackupService().schedule()
+    return result
   })
 
   ipcMain.handle('customers:update', (_event, id: number, data: UpdateCustomerDTO) => {
-    return service.update(id, data)
+    const result = service.update(id, data)
+    getBackupService().schedule()
+    return result
   })
 
   ipcMain.handle('customers:delete', (_event, id: number) => {
     service.delete(id)
+    getBackupService().schedule()
   })
 
   ipcMain.handle('customers:getBalance', (_event, id: number) => {
@@ -35,7 +41,9 @@ export function registerCustomerHandlers(db: Database.Database): void {
   })
 
   ipcMain.handle('customers:addPayment', (_event, id: number, amount: number, notes?: string) => {
-    return service.addPayment(id, amount, notes)
+    const result = service.addPayment(id, amount, notes)
+    getBackupService().schedule()
+    return result
   })
 
   ipcMain.handle('customers:getPayments', (_event, id: number) => {

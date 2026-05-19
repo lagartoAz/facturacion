@@ -260,4 +260,38 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 14')
   }
+
+  if (version < 15) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS quotes (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        quote_number    TEXT NOT NULL UNIQUE,
+        customer_id     INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        subtotal_usd    REAL NOT NULL DEFAULT 0,
+        total_usd       REAL NOT NULL DEFAULT 0,
+        rate_ves        REAL,
+        rate_cop        REAL,
+        total_ves       REAL,
+        total_cop       REAL,
+        notes           TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_quotes_date ON quotes(created_at);
+
+      CREATE TABLE IF NOT EXISTS quote_items (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        quote_id     INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+        product_id   INTEGER REFERENCES products(id) ON DELETE SET NULL,
+        product_name TEXT NOT NULL,
+        quantity     REAL NOT NULL,
+        unit_price   REAL NOT NULL,
+        subtotal     REAL NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_quote_items_quote ON quote_items(quote_id);
+    `)
+    db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('next_quote_number', '1')").run()
+    db.pragma('user_version = 15')
+  }
 }
