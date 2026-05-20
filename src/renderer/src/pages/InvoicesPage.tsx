@@ -9,7 +9,14 @@ import {
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
-import { formatUSD, formatVES, formatCOP } from '@/lib/currency'
+import {
+  formatUSD,
+  formatVES,
+  formatCOP,
+  getPaidCurrency,
+  formatAmountIn,
+  plainAmountIn
+} from '@/lib/currency'
 import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -197,28 +204,20 @@ export default function InvoicesPage(): JSX.Element {
     if (!printWindow) return
 
     const inv = selectedInvoice
+    const paid = getPaidCurrency(inv)
+    const fmt = (usd: number): string => plainAmountIn(usd, paid, inv.rate_ves, inv.rate_cop)
     const itemsHtml = inv.items
       ?.map(
         (item) => `
       <tr>
         <td style="padding:2px 0">${item.product_name}</td>
         <td style="text-align:center">${item.quantity}</td>
-        <td style="text-align:right">$${item.unit_price.toFixed(2)}</td>
-        <td style="text-align:right">$${item.subtotal.toFixed(2)}</td>
+        <td style="text-align:right">${fmt(item.unit_price)}</td>
+        <td style="text-align:right">${fmt(item.subtotal)}</td>
       </tr>`
       )
       .join('') ?? ''
-
-    let totalDisplay = `$${inv.total_usd.toFixed(2)}`
-    if (inv.payment_method === 'cash') {
-      if (inv.cash_currency === 'VES' && inv.total_ves) totalDisplay = `Bs. ${inv.total_ves.toFixed(2)}`
-      else if (inv.cash_currency === 'COP' && inv.total_cop) totalDisplay = `COP ${Math.round(inv.total_cop)}`
-    } else if (inv.payment_method === 'card' && inv.payment_amount_ves && inv.total_ves) {
-      totalDisplay = `Bs. ${inv.total_ves.toFixed(2)}`
-    } else if (inv.payment_method === 'transfer') {
-      if (inv.payment_amount_ves && inv.total_ves) totalDisplay = `Bs. ${inv.total_ves.toFixed(2)}`
-      else if (inv.payment_amount_cop && inv.total_cop) totalDisplay = `COP ${Math.round(inv.total_cop)}`
-    }
+    const totalDisplay = fmt(inv.total_usd)
 
     printWindow.document.write(`
       <html><head><title>${inv.invoice_number}</title>
@@ -477,24 +476,43 @@ export default function InvoicesPage(): JSX.Element {
 
               <Separator />
 
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between font-bold text-base">
-                  <span>Total USD</span>
-                  <span>{formatUSD(selectedInvoice.total_usd)}</span>
-                </div>
-                {selectedInvoice.total_ves && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Total VES (Tasa: {selectedInvoice.rate_ves?.toFixed(2)})</span>
-                    <span>{formatVES(selectedInvoice.total_ves)}</span>
+              {(() => {
+                const paid = getPaidCurrency(selectedInvoice)
+                const paidLabel =
+                  paid === 'VES' ? 'Total Bs.' : paid === 'COP' ? 'Total COP' : 'Total USD'
+                const paidAmount = formatAmountIn(
+                  selectedInvoice.total_usd,
+                  paid,
+                  selectedInvoice.rate_ves,
+                  selectedInvoice.rate_cop
+                )
+                return (
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between font-bold text-base">
+                      <span>{paidLabel}</span>
+                      <span>{paidAmount}</span>
+                    </div>
+                    {paid !== 'USD' && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Total USD</span>
+                        <span>{formatUSD(selectedInvoice.total_usd)}</span>
+                      </div>
+                    )}
+                    {paid !== 'VES' && selectedInvoice.total_ves && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Total VES (Tasa: {selectedInvoice.rate_ves?.toFixed(2)})</span>
+                        <span>{formatVES(selectedInvoice.total_ves)}</span>
+                      </div>
+                    )}
+                    {paid !== 'COP' && selectedInvoice.total_cop && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Total COP (Tasa: {selectedInvoice.rate_cop?.toFixed(0)})</span>
+                        <span>{formatCOP(selectedInvoice.total_cop)}</span>
+                      </div>
+                    )}
                   </div>
-                )}
-                {selectedInvoice.total_cop && (
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>Total COP (Tasa: {selectedInvoice.rate_cop?.toFixed(0)})</span>
-                    <span>{formatCOP(selectedInvoice.total_cop)}</span>
-                  </div>
-                )}
-              </div>
+                )
+              })()}
 
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={printInvoice}>
