@@ -6,13 +6,18 @@ import { initDatabase } from './database/connection'
 import { runMigrations } from './database/migrations'
 import { registerAllHandlers } from './ipc'
 import { initBackupService } from './services/backup.service'
-import { verifyAtStartup, startWatchdog, isPortable } from './services/usb.service'
+import { verifyAtStartup, startWatchdog, isPortable, getUsbDir } from './services/usb.service'
 import { clearDbPath, getDbPath } from './services/db-location.service'
 
-// Always store the database and backups on the PC's home directory, even when
-// the binary is launched from a USB. This way the data never travels with the
-// USB and each PC keeps its own local database.
-app.setPath('userData', join(homedir(), '.facturacion-pos'))
+// Portable (USB) builds keep all their data on the USB itself so the database
+// travels with the binary. Installed/dev builds store data in the PC's home dir.
+const portableUsbDir = app.isPackaged ? getUsbDir() : null
+app.setPath(
+  'userData',
+  portableUsbDir
+    ? join(portableUsbDir, 'facturacion-data')
+    : join(homedir(), '.facturacion-pos')
+)
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -120,7 +125,7 @@ app.whenReady().then(() => {
     startWatchdog(() => {
       dialog.showErrorBox(
         'USB desconectado',
-        'El USB de la aplicacion fue removido. La aplicacion se cerrara.\nLos datos guardados en esta PC estan a salvo.'
+        'El USB de la aplicacion fue removido. La aplicacion se cerrara.\nLa base de datos y los respaldos viven en el USB; vuelve a conectarlo para retomar el trabajo.'
       )
       app.quit()
     })

@@ -27,6 +27,9 @@ interface Invoice {
   total_ves: number | null
   total_cop: number | null
   payment_method: string
+  cash_currency: string | null
+  payment_amount_ves: number | null
+  payment_amount_cop: number | null
   status: string
   created_at: string
   items?: InvoiceItem[]
@@ -206,6 +209,17 @@ export default function InvoicesPage(): JSX.Element {
       )
       .join('') ?? ''
 
+    let totalDisplay = `$${inv.total_usd.toFixed(2)}`
+    if (inv.payment_method === 'cash') {
+      if (inv.cash_currency === 'VES' && inv.total_ves) totalDisplay = `Bs. ${inv.total_ves.toFixed(2)}`
+      else if (inv.cash_currency === 'COP' && inv.total_cop) totalDisplay = `COP ${Math.round(inv.total_cop)}`
+    } else if (inv.payment_method === 'card' && inv.payment_amount_ves && inv.total_ves) {
+      totalDisplay = `Bs. ${inv.total_ves.toFixed(2)}`
+    } else if (inv.payment_method === 'transfer') {
+      if (inv.payment_amount_ves && inv.total_ves) totalDisplay = `Bs. ${inv.total_ves.toFixed(2)}`
+      else if (inv.payment_amount_cop && inv.total_cop) totalDisplay = `COP ${Math.round(inv.total_cop)}`
+    }
+
     printWindow.document.write(`
       <html><head><title>${inv.invoice_number}</title>
       <style>
@@ -225,9 +239,7 @@ export default function InvoicesPage(): JSX.Element {
           ${itemsHtml}
         </table>
         <div class="divider"></div>
-        <div class="right bold">TOTAL: $${inv.total_usd.toFixed(2)}</div>
-        ${inv.total_ves ? `<div class="right">Bs. ${inv.total_ves.toFixed(2)} (Tasa: ${inv.rate_ves?.toFixed(2)})</div>` : ''}
-        ${inv.total_cop ? `<div class="right">COP ${Math.round(inv.total_cop)} (Tasa: ${inv.rate_cop?.toFixed(0)})</div>` : ''}
+        <div class="right bold">TOTAL: ${totalDisplay}</div>
         <div class="divider"></div>
         <div class="center">Pago: ${inv.payment_method === 'mixed' && inv.payments ? 'Mixto - ' + inv.payments.map((p: { method: string; amount: number }) => `${p.method}: $${p.amount.toFixed(2)}`).join(', ') : (paymentLabels[inv.payment_method] || inv.payment_method)}</div>
         <div class="center" style="margin-top:10px">Gracias por su compra!</div>

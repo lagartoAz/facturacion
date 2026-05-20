@@ -101,6 +101,21 @@ interface PaymentLine {
   amount: string
 }
 
+function getInvoiceTotalForPrint(inv: CompletedInvoice): string {
+  if (inv.payment_method === 'cash') {
+    if (inv.cash_currency === 'VES' && inv.total_ves) return `Bs. ${inv.total_ves.toFixed(2)}`
+    if (inv.cash_currency === 'COP' && inv.total_cop) return `COP ${Math.round(inv.total_cop)}`
+  }
+  if (inv.payment_method === 'card' && inv.payment_amount_ves && inv.total_ves) {
+    return `Bs. ${inv.total_ves.toFixed(2)}`
+  }
+  if (inv.payment_method === 'transfer') {
+    if (inv.payment_amount_ves && inv.total_ves) return `Bs. ${inv.total_ves.toFixed(2)}`
+    if (inv.payment_amount_cop && inv.total_cop) return `COP ${Math.round(inv.total_cop)}`
+  }
+  return `$${inv.total_usd.toFixed(2)}`
+}
+
 function getPaymentSummary(inv: CompletedInvoice): { title: string; lines: PaymentLine[] } {
   const title = PAYMENT_METHOD_LABEL[inv.payment_method] ?? inv.payment_method
 
@@ -514,9 +529,7 @@ export default function PosPage(): JSX.Element {
           ${itemsHtml}
         </table>
         <div class="divider"></div>
-        <div class="right bold">TOTAL: $${inv.total_usd.toFixed(2)}</div>
-        ${inv.total_ves ? `<div class="right">Bs. ${inv.total_ves.toFixed(2)} (Tasa: ${inv.rate_ves?.toFixed(2)})</div>` : ''}
-        ${inv.total_cop ? `<div class="right">COP ${Math.round(inv.total_cop)} (Tasa: ${inv.rate_cop?.toFixed(0)})</div>` : ''}
+        <div class="right bold">TOTAL: ${getInvoiceTotalForPrint(inv)}</div>
         <div class="divider"></div>
         <div class="center label">Compra realizada en ${summary.title}</div>
         ${paymentLinesHtml}
