@@ -36,6 +36,12 @@ export function registerProductHandlers(db: Database.Database): void {
     getBackupService().schedule()
   })
 
+  ipcMain.handle('products:delete', (_event, id: number) => {
+    const result = service.delete(id)
+    getBackupService().schedule()
+    return result
+  })
+
   ipcMain.handle('products:saveImage', (_event, productId: number, imageData: string, extension: string) => {
     return service.saveImage(productId, imageData, extension)
   })

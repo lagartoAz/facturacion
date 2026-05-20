@@ -134,11 +134,9 @@ export default function InvoicesPage(): JSX.Element {
     }
   }
 
-  function printQuote(): void {
+  async function printQuote(): Promise<void> {
     if (!selectedQuote) return
     const q = selectedQuote
-    const printWindow = window.open('', '_blank', 'width=400,height=600')
-    if (!printWindow) return
     const itemsHtml = (q.items ?? [])
       .map(
         (item) => `
@@ -150,7 +148,7 @@ export default function InvoicesPage(): JSX.Element {
       </tr>`
       )
       .join('')
-    printWindow.document.write(`
+    const html = `
       <html><head><title>${q.quote_number}</title>
       <style>
         body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; }
@@ -179,9 +177,11 @@ export default function InvoicesPage(): JSX.Element {
         <div class="center label">Este documento no es una factura.</div>
         <div class="center label">Valido como presupuesto.</div>
       </body></html>
-    `)
-    printWindow.document.close()
-    printWindow.print()
+    `
+    const result = await window.api.printReceipt(html)
+    if (!result.success && result.error) {
+      showNotification(`Error al imprimir: ${result.error}`)
+    }
   }
 
   async function viewInvoice(id: number): Promise<void> {
@@ -198,11 +198,8 @@ export default function InvoicesPage(): JSX.Element {
     }
   }
 
-  function printInvoice(): void {
+  async function printInvoice(): Promise<void> {
     if (!selectedInvoice) return
-    const printWindow = window.open('', '_blank', 'width=400,height=600')
-    if (!printWindow) return
-
     const inv = selectedInvoice
     const paid = getPaidCurrency(inv)
     const fmt = (usd: number): string => plainAmountIn(usd, paid, inv.rate_ves, inv.rate_cop)
@@ -219,7 +216,7 @@ export default function InvoicesPage(): JSX.Element {
       .join('') ?? ''
     const totalDisplay = fmt(inv.total_usd)
 
-    printWindow.document.write(`
+    const html = `
       <html><head><title>${inv.invoice_number}</title>
       <style>
         body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; }
@@ -243,9 +240,12 @@ export default function InvoicesPage(): JSX.Element {
         <div class="center">Pago: ${inv.payment_method === 'mixed' && inv.payments ? 'Mixto - ' + inv.payments.map((p: { method: string; amount: number }) => `${p.method}: $${p.amount.toFixed(2)}`).join(', ') : (paymentLabels[inv.payment_method] || inv.payment_method)}</div>
         <div class="center" style="margin-top:10px">Gracias por su compra!</div>
       </body></html>
-    `)
-    printWindow.document.close()
-    printWindow.print()
+    `
+
+    const result = await window.api.printReceipt(html)
+    if (!result.success && result.error) {
+      showNotification(`Error al imprimir: ${result.error}`)
+    }
   }
 
   const paymentLabels: Record<string, string> = {

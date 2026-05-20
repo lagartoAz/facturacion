@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import { formatUSD } from '@/lib/currency'
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, Package, BarChart3 } from 'lucide-react'
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, Package, BarChart3, Trash2 } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -189,6 +189,21 @@ export default function ProductsPage(): JSX.Element {
   async function handleToggleActive(id: number): Promise<void> {
     await window.api.toggleProductActive(id)
     loadProducts()
+  }
+
+  async function handleDeleteProduct(): Promise<void> {
+    if (!editingId) return
+    if (!confirm('Eliminar este producto del inventario? Esta accion no se puede deshacer.')) return
+    try {
+      const result = await window.api.deleteProduct(editingId)
+      if (!result.hardDeleted) {
+        alert('El producto tiene ventas registradas, por lo que fue ocultado del inventario en lugar de eliminado para preservar el historial.')
+      }
+      setDialogOpen(false)
+      loadProducts()
+    } catch (err) {
+      alert(`No se pudo eliminar el producto: ${(err as Error).message}`)
+    }
   }
 
   async function handleCreateCategory(): Promise<void> {
@@ -469,13 +484,23 @@ export default function ProductsPage(): JSX.Element {
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleSave} disabled={!form.name || !form.price_usd}>
-              {editingId ? 'Guardar Cambios' : 'Crear Producto'}
-            </Button>
+          <DialogFooter className="sm:justify-between">
+            {editingId ? (
+              <Button variant="destructive" onClick={handleDeleteProduct}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Eliminar
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSave} disabled={!form.name || !form.price_usd}>
+                {editingId ? 'Guardar Cambios' : 'Crear Producto'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

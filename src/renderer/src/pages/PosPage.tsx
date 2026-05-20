@@ -473,11 +473,9 @@ export default function PosPage(): JSX.Element {
     }
   }
 
-  function handlePrintInvoice(): void {
+  async function handlePrintInvoice(): Promise<void> {
     if (!completedInvoice) return
     const inv = completedInvoice
-    const printWindow = window.open('', '_blank', 'width=400,height=600')
-    if (!printWindow) return
 
     const paid = getPaidCurrency(inv)
     const fmt = (usd: number): string => plainAmountIn(usd, paid, inv.rate_ves, inv.rate_cop)
@@ -503,7 +501,7 @@ export default function PosPage(): JSX.Element {
       })
       .join('')
 
-    printWindow.document.write(`
+    const html = `
       <html><head><title>${inv.invoice_number}</title>
       <style>
         body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; }
@@ -529,9 +527,12 @@ export default function PosPage(): JSX.Element {
         ${paymentLinesHtml}
         <div class="center" style="margin-top:10px">Gracias por su compra!</div>
       </body></html>
-    `)
-    printWindow.document.close()
-    printWindow.print()
+    `
+
+    const result = await window.api.printReceipt(html)
+    if (!result.success && result.error) {
+      showNotification(`Error al imprimir: ${result.error}`)
+    }
   }
 
   function handleCloseSuccess(): void {

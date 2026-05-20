@@ -145,6 +145,29 @@ export class ProductService {
       .run(id)
   }
 
+  // Deletes a product from the inventory. If the product has invoice history,
+  // the FK constraint (ON DELETE RESTRICT) prevents removal — in that case we
+  // soft-delete (is_active = 0) so historical invoices keep their reference.
+  delete(id: number): { hardDeleted: boolean } {
+    const refs = this.db
+      .prepare('SELECT COUNT(*) as c FROM invoice_items WHERE product_id = ?')
+      .get(id) as { c: number }
+    if (refs.c > 0) {
+      this.db
+        .prepare("UPDATE products SET is_active = 0, updated_at = datetime('now') WHERE id = ?")
+        .run(id)
+      return { hardDeleted: false }
+    }
+    const product = this.db
+      .prepare('SELECT image_path FROM products WHERE id = ?')
+      .get(id) as { image_path: string | null } | undefined
+    if (product?.image_path && existsSync(product.image_path)) {
+      try { unlinkSync(product.image_path) } catch { /* ignore */ }
+    }
+    this.db.prepare('DELETE FROM products WHERE id = ?').run(id)
+    return { hardDeleted: true }
+  }
+
   saveImage(productId: number, imageData: string, extension: string): string {
     const imagesDir = join(app.getPath('userData'), 'product-images')
     if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true })

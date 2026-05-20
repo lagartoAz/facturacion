@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Save, Clock, ShieldCheck, FolderOpen, HardDrive, Usb, FileSpreadsheet, Package, FileText, Upload, AlertTriangle, Database, MoveRight } from 'lucide-react'
+import { Save, Clock, ShieldCheck, FolderOpen, HardDrive, Usb, FileSpreadsheet, Package, FileText, Upload, AlertTriangle, Database, MoveRight, Printer, RefreshCw } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -32,6 +32,14 @@ interface UsbStatus {
 interface DbInfo {
   currentPath: string
   defaultPath: string
+  isDefault: boolean
+}
+
+interface PrinterEntry {
+  name: string
+  displayName: string
+  description: string
+  status: number
   isDefault: boolean
 }
 
@@ -63,12 +71,19 @@ export default function SettingsPage(): JSX.Element {
   const [dbInfo, setDbInfo] = useState<DbInfo | null>(null)
   const [movingDb, setMovingDb] = useState(false)
   const [dbMessage, setDbMessage] = useState('')
+  const [printers, setPrinters] = useState<PrinterEntry[]>([])
+  const [defaultPrinter, setDefaultPrinter] = useState('')
+  const [silentPrint, setSilentPrint] = useState(false)
+  const [loadingPrinters, setLoadingPrinters] = useState(false)
+  const [printMessage, setPrintMessage] = useState('')
 
   useEffect(() => {
     loadSettings()
     loadBackups()
     loadUsbStatus()
     loadDbInfo()
+    loadPrinters()
+    loadPrinterConfig()
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     const usbTimer = setInterval(loadUsbStatus, 5000)
     return () => {
@@ -76,6 +91,52 @@ export default function SettingsPage(): JSX.Element {
       clearInterval(usbTimer)
     }
   }, [])
+
+  async function loadPrinters(): Promise<void> {
+    setLoadingPrinters(true)
+    try {
+      setPrinters(await window.api.listPrinters())
+    } finally {
+      setLoadingPrinters(false)
+    }
+  }
+
+  async function loadPrinterConfig(): Promise<void> {
+    const cfg = await window.api.getPrinterConfig()
+    setDefaultPrinter(cfg.defaultPrinter)
+    setSilentPrint(cfg.silent)
+  }
+
+  async function savePrinter(): Promise<void> {
+    await window.api.setDefaultPrinter(defaultPrinter || null)
+    await window.api.setSilentPrint(silentPrint)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function testPrint(): Promise<void> {
+    setPrintMessage('')
+    const html = `
+      <html><head><title>Prueba</title>
+      <style>
+        body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; }
+        .center { text-align: center; }
+        .bold { font-weight: bold; }
+        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+      </style></head><body>
+        <div class="center bold">PRUEBA DE IMPRESION</div>
+        <div class="center">${format(new Date(), 'dd/MM/yyyy HH:mm')}</div>
+        <div class="divider"></div>
+        <div class="center">Impresora: ${defaultPrinter || 'predeterminada del sistema'}</div>
+        <div class="divider"></div>
+        <div class="center">Si lees esto, la impresion funciona correctamente.</div>
+      </body></html>
+    `
+    const result = await window.api.printReceipt(html)
+    if (result.success) setPrintMessage('Enviado a la impresora')
+    else setPrintMessage(`Error: ${result.error ?? 'desconocido'}`)
+    setTimeout(() => setPrintMessage(''), 5000)
+  }
 
   async function loadDbInfo(): Promise<void> {
     setDbInfo(await window.api.getDbInfo())
@@ -314,6 +375,78 @@ export default function SettingsPage(): JSX.Element {
             <Save className="mr-2 h-4 w-4" />
             Guardar Datos
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Printer className="h-5 w-5" />
+            Impresora
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="printerSelect">Impresora por defecto</Label>
+            <div className="flex gap-2">
+              <select
+                id="printerSelect"
+                className="flex-1 h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={defaultPrinter}
+                onChange={(e) => setDefaultPrinter(e.target.value)}
+                disabled={loadingPrinters}
+              >
+                <option value="">Pedir al imprimir (mostrar dialogo)</option>
+                {printers.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.displayName}
+                    {p.isDefault ? ' (sistema)' : ''}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={loadPrinters}
+                disabled={loadingPrinters}
+                title="Refrescar"
+              >
+                <RefreshCw className={`h-4 w-4 ${loadingPrinters ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+            {printers.length === 0 && !loadingPrinters && (
+              <p className="text-xs text-muted-foreground">
+                No se detectaron impresoras. Verifica que esten conectadas e instaladas en Windows.
+              </p>
+            )}
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={silentPrint}
+              onChange={(e) => setSilentPrint(e.target.checked)}
+              disabled={!defaultPrinter}
+            />
+            <span>Imprimir sin mostrar dialogo (silencioso)</span>
+          </label>
+          {!defaultPrinter && (
+            <p className="text-xs text-muted-foreground">
+              Para impresion silenciosa selecciona primero una impresora por defecto.
+            </p>
+          )}
+          <div className="flex gap-2 pt-1">
+            <Button onClick={savePrinter} size="sm">
+              <Save className="mr-2 h-4 w-4" />
+              Guardar
+            </Button>
+            <Button onClick={testPrint} size="sm" variant="outline">
+              <Printer className="mr-2 h-4 w-4" />
+              Imprimir prueba
+            </Button>
+          </div>
+          {printMessage && (
+            <p className="text-xs text-muted-foreground border-t pt-2">{printMessage}</p>
+          )}
         </CardContent>
       </Card>
 

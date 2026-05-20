@@ -14,6 +14,8 @@ const api = {
     ipcRenderer.invoke('products:update', id, data),
   toggleProductActive: (id: number) =>
     ipcRenderer.invoke('products:toggleActive', id),
+  deleteProduct: (id: number): Promise<{ hardDeleted: boolean }> =>
+    ipcRenderer.invoke('products:delete', id),
   saveProductImage: (productId: number, imageData: string, extension: string) =>
     ipcRenderer.invoke('products:saveImage', productId, imageData, extension),
   removeProductImage: (productId: number) =>
@@ -138,7 +140,26 @@ const api = {
     added: number
     updated: number
     errors: { row: number; reason: string }[]
-  } | null> => ipcRenderer.invoke('import:inventory')
+  } | null> => ipcRenderer.invoke('import:inventory'),
+
+  // Printing
+  listPrinters: (): Promise<
+    {
+      name: string
+      displayName: string
+      description: string
+      status: number
+      isDefault: boolean
+    }[]
+  > => ipcRenderer.invoke('printer:list'),
+  printReceipt: (html: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('printer:print', html),
+  setDefaultPrinter: (deviceName: string | null): Promise<void> =>
+    ipcRenderer.invoke('printer:setDefault', deviceName),
+  setSilentPrint: (silent: boolean): Promise<void> =>
+    ipcRenderer.invoke('printer:setSilent', silent),
+  getPrinterConfig: (): Promise<{ defaultPrinter: string; silent: boolean }> =>
+    ipcRenderer.invoke('printer:getConfig')
 }
 
 contextBridge.exposeInMainWorld('api', api)
