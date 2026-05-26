@@ -179,6 +179,7 @@ export default function PosPage(): JSX.Element {
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false)
   const [pauseLabel, setPauseLabel] = useState('')
   const [pendingCartsOpen, setPendingCartsOpen] = useState(false)
+  const [printBehavior, setPrintBehavior] = useState<'ask' | 'always' | 'never'>('ask')
   const barcodeInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -200,14 +201,18 @@ export default function PosPage(): JSX.Element {
   }, [isStandaloneWindow])
 
   async function loadInitialData(): Promise<void> {
-    const [ratesData, customersData, pendingCartsData] = await Promise.all([
+    const [ratesData, customersData, pendingCartsData, settings] = await Promise.all([
       window.api.getExchangeRates(),
       window.api.getCustomers(),
-      window.api.getPendingCarts()
+      window.api.getPendingCarts(),
+      window.api.getAllSettings()
     ])
     setRates(ratesData)
     setCustomers(customersData)
     setPendingCarts(pendingCartsData)
+    const pas = settings.print_after_sale
+    if (pas === 'always' || pas === 'never') setPrintBehavior(pas)
+    else setPrintBehavior('ask')
   }
 
   const getRate = (currency: string): number =>
@@ -465,6 +470,10 @@ export default function PosPage(): JSX.Element {
 
       setSuccessDialogOpen(true)
 
+      if (printBehavior === 'always') {
+        handlePrintInvoice(fullInvoice)
+      }
+
       // Reload rates in case they changed
       const newRates = await window.api.getExchangeRates()
       setRates(newRates)
@@ -473,9 +482,9 @@ export default function PosPage(): JSX.Element {
     }
   }
 
-  async function handlePrintInvoice(): Promise<void> {
-    if (!completedInvoice) return
-    const inv = completedInvoice
+  async function handlePrintInvoice(invoiceArg?: typeof completedInvoice): Promise<void> {
+    const inv = invoiceArg ?? completedInvoice
+    if (!inv) return
 
     const paid = getPaidCurrency(inv)
     const fmt = (usd: number): string => plainAmountIn(usd, paid, inv.rate_ves, inv.rate_cop)
@@ -501,18 +510,27 @@ export default function PosPage(): JSX.Element {
       })
       .join('')
 
+    const settings = await window.api.getAllSettings()
+    const fs = parseInt(settings.receipt_font_size) || 14
+    const fw = settings.receipt_font_weight || '700'
+    const rTitle = (settings.receipt_title || '').trim()
+
     const html = `
       <html><head><title>${inv.invoice_number}</title>
       <style>
-        body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; }
+        @page { size: 58mm auto; margin: 0; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm 2mm; }
         table { width: 100%; border-collapse: collapse; }
-        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        td, th { font-size: ${fs - 1}px; font-weight: ${fw}; padding: 2px 0; }
+        .divider { border-top: 1.5px solid #000; margin: 5px 0; }
         .center { text-align: center; }
         .right { text-align: right; }
-        .bold { font-weight: bold; }
-        .label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+        .bold { font-weight: 900; }
+        .label { font-size: ${fs - 1}px; font-weight: ${fw}; text-transform: uppercase; }
       </style></head><body>
-        <div class="center bold">${inv.invoice_number}</div>
+        ${rTitle ? `<div class="center bold" style="font-size:${fs + 3}px">${rTitle}</div>` : ''}
+        <div class="center bold" style="font-size:${fs + 2}px">${inv.invoice_number}</div>
         <div class="center">${format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm')}</div>
         ${inv.customer_name ? `<div class="center">${inv.customer_name}</div>` : ''}
         <div class="divider"></div>
@@ -521,11 +539,11 @@ export default function PosPage(): JSX.Element {
           ${itemsHtml}
         </table>
         <div class="divider"></div>
-        <div class="right bold">TOTAL: ${fmt(inv.total_usd)}</div>
+        <div class="right bold" style="font-size:${fs + 1}px">TOTAL: ${fmt(inv.total_usd)}</div>
         <div class="divider"></div>
-        <div class="center label">Compra realizada en ${summary.title}</div>
+        <div class="center label">Compra en ${summary.title}</div>
         ${paymentLinesHtml}
-        <div class="center" style="margin-top:10px">Gracias por su compra!</div>
+        <div class="center" style="margin-top:8px">Gracias por su compra!</div>
       </body></html>
     `
 
@@ -1109,19 +1127,31 @@ export default function PosPage(): JSX.Element {
             )
           })()}
           <DialogFooter className="flex gap-2 sm:gap-2">
-            <Button variant="outline" onClick={handleCloseSuccess} className="flex-1">
-              Continuar sin imprimir
-            </Button>
-            <Button
-              onClick={() => {
-                handlePrintInvoice()
-                handleCloseSuccess()
-              }}
-              className="flex-1"
-            >
-              <Printer className="mr-2 h-4 w-4" />
-              Imprimir Factura
-            </Button>
+            {printBehavior === 'ask' ? (
+              <>
+                <Button variant="outline" onClick={handleCloseSuccess} className="flex-1">
+                  Continuar sin imprimir
+                </Button>
+                <Button
+                  onClick={() => {
+                    handlePrintInvoice()
+                    handleCloseSuccess()
+                  }}
+                  className="flex-1"
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  Imprimir Factura
+                </Button>
+              </>
+            ) : (
+              <Button onClick={handleCloseSuccess} className="flex-1">
+                {printBehavior === 'always' ? (
+                  <><Printer className="mr-2 h-4 w-4" />Imprimiendo... Continuar</>
+                ) : (
+                  'Continuar'
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

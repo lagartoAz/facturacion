@@ -172,10 +172,10 @@ export class CashRegisterService {
   }
 
   getSalesForSession(openedAt: string): SalesByMethod {
-    // Regular (non-mixed) invoices — use payment_amount_ves/cop when available, fallback to total_ves/cop
+    // Regular (non-mixed) invoices — for cash, only count USD cash in total_usd (VES/COP cash handled separately)
     const rows = this.db
       .prepare(
-        "SELECT payment_method, COALESCE(SUM(total_usd), 0) as total, COALESCE(SUM(COALESCE(payment_amount_ves, total_ves, 0)), 0) as ves, COALESCE(SUM(COALESCE(payment_amount_cop, total_cop, 0)), 0) as cop, COUNT(*) as count FROM invoices WHERE created_at >= ? AND status = 'completed' AND payment_method != 'mixed' GROUP BY payment_method"
+        "SELECT payment_method, COALESCE(SUM(CASE WHEN payment_method != 'cash' OR COALESCE(cash_currency, 'USD') = 'USD' THEN total_usd ELSE 0 END), 0) as total, COALESCE(SUM(COALESCE(payment_amount_ves, total_ves, 0)), 0) as ves, COALESCE(SUM(COALESCE(payment_amount_cop, total_cop, 0)), 0) as cop, COUNT(*) as count FROM invoices WHERE created_at >= ? AND status = 'completed' AND payment_method != 'mixed' GROUP BY payment_method"
       )
       .all(openedAt) as { payment_method: string; total: number; ves: number; cop: number; count: number }[]
 

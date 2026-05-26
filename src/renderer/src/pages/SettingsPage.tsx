@@ -73,9 +73,12 @@ export default function SettingsPage(): JSX.Element {
   const [dbMessage, setDbMessage] = useState('')
   const [printers, setPrinters] = useState<PrinterEntry[]>([])
   const [defaultPrinter, setDefaultPrinter] = useState('')
-  const [silentPrint, setSilentPrint] = useState(false)
   const [loadingPrinters, setLoadingPrinters] = useState(false)
   const [printMessage, setPrintMessage] = useState('')
+  const [printAfterSale, setPrintAfterSale] = useState<'ask' | 'always' | 'never'>('ask')
+  const [receiptTitle, setReceiptTitle] = useState('')
+  const [receiptFontSize, setReceiptFontSize] = useState('14')
+  const [receiptFontWeight, setReceiptFontWeight] = useState('700')
 
   useEffect(() => {
     loadSettings()
@@ -102,32 +105,47 @@ export default function SettingsPage(): JSX.Element {
   }
 
   async function loadPrinterConfig(): Promise<void> {
-    const cfg = await window.api.getPrinterConfig()
+    const [cfg, settings] = await Promise.all([
+      window.api.getPrinterConfig(),
+      window.api.getAllSettings()
+    ])
     setDefaultPrinter(cfg.defaultPrinter)
-    setSilentPrint(cfg.silent)
+    const pas = settings.print_after_sale
+    if (pas === 'always' || pas === 'never') setPrintAfterSale(pas)
+    else setPrintAfterSale('ask')
   }
 
   async function savePrinter(): Promise<void> {
     await window.api.setDefaultPrinter(defaultPrinter || null)
-    await window.api.setSilentPrint(silentPrint)
+    await window.api.setSetting('print_after_sale', printAfterSale)
+    const fs = parseInt(receiptFontSize)
+    await window.api.setSetting('receipt_font_size', (fs >= 10 && fs <= 20 ? fs : 14).toString())
+    await window.api.setSetting('receipt_font_weight', receiptFontWeight)
+    await window.api.setSetting('receipt_title', receiptTitle.trim())
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
   async function testPrint(): Promise<void> {
     setPrintMessage('')
+    const fs = parseInt(receiptFontSize) || 14
+    const fw = receiptFontWeight || '700'
     const html = `
       <html><head><title>Prueba</title>
       <style>
-        body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; }
+        @page { size: 58mm auto; margin: 0; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm 2mm; }
         .center { text-align: center; }
-        .bold { font-weight: bold; }
-        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        .bold { font-weight: 900; }
+        .divider { border-top: 1.5px solid #000; margin: 5px 0; }
       </style></head><body>
-        <div class="center bold">PRUEBA DE IMPRESION</div>
+        ${receiptTitle ? `<div class="center bold" style="font-size:${fs + 3}px">${receiptTitle}</div>` : ''}
+        <div class="center bold" style="font-size:${fs + 2}px">PRUEBA DE IMPRESION</div>
         <div class="center">${format(new Date(), 'dd/MM/yyyy HH:mm')}</div>
         <div class="divider"></div>
         <div class="center">Impresora: ${defaultPrinter || 'predeterminada del sistema'}</div>
+        <div class="center">Tamano: ${fs}px · Grosor: ${fw}</div>
         <div class="divider"></div>
         <div class="center">Si lees esto, la impresion funciona correctamente.</div>
       </body></html>
@@ -269,6 +287,9 @@ export default function SettingsPage(): JSX.Element {
     setBusinessRif(settings.business_rif || '')
     setBusinessAddress(settings.business_address || '')
     setBusinessPhone(settings.business_phone || '')
+    setReceiptTitle(settings.receipt_title || '')
+    setReceiptFontSize(settings.receipt_font_size || '14')
+    setReceiptFontWeight(settings.receipt_font_weight || '700')
   }
 
   async function saveRates(): Promise<void> {
@@ -420,20 +441,76 @@ export default function SettingsPage(): JSX.Element {
               </p>
             )}
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={silentPrint}
-              onChange={(e) => setSilentPrint(e.target.checked)}
-              disabled={!defaultPrinter}
-            />
-            <span>Imprimir sin mostrar dialogo (silencioso)</span>
-          </label>
-          {!defaultPrinter && (
+          {defaultPrinter && (
             <p className="text-xs text-muted-foreground">
-              Para impresion silenciosa selecciona primero una impresora por defecto.
+              Con una impresora predeterminada configurada, al imprimir se enviara directamente sin mostrar dialogo del sistema.
             </p>
           )}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Comportamiento al finalizar una venta</p>
+            <div className="space-y-2">
+              {([
+                ['never',  'No imprimir',  'Solo registra la venta. Para imprimir ve a Facturas y selecciona la que quieras.'],
+                ['ask',    'Preguntar',    'Muestra un dialogo al terminar la venta con opcion de imprimir o continuar sin imprimir.'],
+                ['always', 'Imprimir siempre', 'Imprime automaticamente al cerrar cada venta sin preguntar.'],
+              ] as const).map(([val, label, desc]) => (
+                <label
+                  key={val}
+                  className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors ${printAfterSale === val ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                  onClick={() => setPrintAfterSale(val)}
+                >
+                  <span className={`mt-0.5 h-4 w-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${printAfterSale === val ? 'border-primary' : 'border-muted-foreground'}`}>
+                    {printAfterSale === val && <span className="h-2 w-2 rounded-full bg-primary" />}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">{label}</p>
+                    <p className="text-xs text-muted-foreground">{desc}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+          <Separator />
+          <p className="text-sm font-medium">Formato del recibo (papel 58mm)</p>
+          <div className="space-y-1">
+            <Label className="text-xs">Titulo del recibo</Label>
+            <Input
+              placeholder="Ej: MI TIENDA, FACTURA, RECIBO..."
+              value={receiptTitle}
+              onChange={(e) => setReceiptTitle(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">Aparece en la parte superior de cada impresion. Dejar vacio para no mostrar.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Tamano de letra (px)</Label>
+              <Input
+                type="number"
+                min="10"
+                max="20"
+                value={receiptFontSize}
+                onChange={(e) => setReceiptFontSize(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Recomendado: 13–15</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Grosor de letra</Label>
+              <div className="flex gap-1">
+                {([['400', 'Normal'], ['700', 'Negrita'], ['900', 'Muy negrita']] as const).map(([val, label]) => (
+                  <Button
+                    key={val}
+                    type="button"
+                    variant={receiptFontWeight === val ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1 text-xs px-1"
+                    onClick={() => setReceiptFontWeight(val)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
           <div className="flex gap-2 pt-1">
             <Button onClick={savePrinter} size="sm">
               <Save className="mr-2 h-4 w-4" />

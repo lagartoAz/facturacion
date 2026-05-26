@@ -53,7 +53,7 @@ export function registerPrinterHandlers(db: Database.Database): void {
         const result = await new Promise<{ success: boolean; error?: string }>(
           (resolve) => {
             const options: Electron.WebContentsPrintOptions = {
-              silent: silent && !!defaultPrinter,
+              silent: !!defaultPrinter,
               printBackground: true,
               margins: { marginType: 'none' }
             }

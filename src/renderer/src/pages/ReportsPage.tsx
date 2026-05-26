@@ -13,7 +13,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts'
-import { TrendingUp, FileText, DollarSign } from 'lucide-react'
+import { TrendingUp, FileText, DollarSign, List, Trophy } from 'lucide-react'
 
 interface DailySale {
   day: string
@@ -38,6 +38,7 @@ export default function ReportsPage(): JSX.Element {
   const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [dailySales, setDailySales] = useState<DailySale[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
+  const [showAllProducts, setShowAllProducts] = useState(false)
   const [summary, setSummary] = useState<Summary>({
     total_revenue: 0,
     total_invoices: 0,
@@ -46,12 +47,12 @@ export default function ReportsPage(): JSX.Element {
 
   useEffect(() => {
     loadData()
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, showAllProducts])
 
   async function loadData(): Promise<void> {
     const [sales, products, sum] = await Promise.all([
       window.api.getDailySales(dateFrom, dateTo),
-      window.api.getTopProducts(dateFrom, dateTo, 10),
+      window.api.getTopProducts(dateFrom, dateTo, showAllProducts ? 99999 : 10),
       window.api.getSalesSummary(dateFrom, dateTo)
     ])
     setDailySales(sales)
@@ -186,8 +187,35 @@ export default function ReportsPage(): JSX.Element {
 
       {/* Top products */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Top 10 Productos</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg">
+            {showAllProducts ? 'Todos los Productos' : 'Top 10 Productos'}
+            {topProducts.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                ({topProducts.length})
+              </span>
+            )}
+          </CardTitle>
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant={!showAllProducts ? 'default' : 'outline'}
+              className="gap-1"
+              onClick={() => setShowAllProducts(false)}
+            >
+              <Trophy className="h-3.5 w-3.5" />
+              Top 10
+            </Button>
+            <Button
+              size="sm"
+              variant={showAllProducts ? 'default' : 'outline'}
+              className="gap-1"
+              onClick={() => setShowAllProducts(true)}
+            >
+              <List className="h-3.5 w-3.5" />
+              Todos
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {topProducts.length > 0 ? (

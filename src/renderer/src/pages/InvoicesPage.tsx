@@ -148,18 +148,27 @@ export default function InvoicesPage(): JSX.Element {
       </tr>`
       )
       .join('')
+    const settings = await window.api.getAllSettings()
+    const fs = parseInt(settings.receipt_font_size) || 14
+    const fw = settings.receipt_font_weight || '700'
+    const rTitle = (settings.receipt_title || '').trim()
+
     const html = `
       <html><head><title>${q.quote_number}</title>
       <style>
-        body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; }
+        @page { size: 58mm auto; margin: 0; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm 2mm; }
         table { width: 100%; border-collapse: collapse; }
-        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        td, th { font-size: ${fs - 1}px; font-weight: ${fw}; padding: 2px 0; }
+        .divider { border-top: 1.5px solid #000; margin: 5px 0; }
         .center { text-align: center; }
         .right { text-align: right; }
-        .bold { font-weight: bold; }
-        .label { font-size: 10px; letter-spacing: 1px; }
+        .bold { font-weight: 900; }
+        .label { font-size: ${fs - 1}px; font-weight: ${fw}; text-transform: uppercase; }
       </style></head><body>
-        <div class="center bold">PRESUPUESTO</div>
+        ${rTitle ? `<div class="center bold" style="font-size:${fs + 3}px">${rTitle}</div>` : ''}
+        <div class="center bold" style="font-size:${fs + 2}px">PRESUPUESTO</div>
         <div class="center bold">${q.quote_number}</div>
         <div class="center">${format(new Date(q.created_at), 'dd/MM/yyyy HH:mm')}</div>
         ${q.customer_name ? `<div class="center">${q.customer_name}</div>` : ''}
@@ -169,13 +178,12 @@ export default function InvoicesPage(): JSX.Element {
           ${itemsHtml}
         </table>
         <div class="divider"></div>
-        <div class="right bold">TOTAL: $${q.total_usd.toFixed(2)}</div>
+        <div class="right bold" style="font-size:${fs + 1}px">TOTAL: $${q.total_usd.toFixed(2)}</div>
         ${q.total_ves ? `<div class="right">Bs. ${q.total_ves.toFixed(2)} (Tasa: ${q.rate_ves?.toFixed(2)})</div>` : ''}
         ${q.total_cop ? `<div class="right">COP ${Math.round(q.total_cop)} (Tasa: ${q.rate_cop?.toFixed(0)})</div>` : ''}
         ${q.notes ? `<div class="divider"></div><div>${q.notes}</div>` : ''}
         <div class="divider"></div>
-        <div class="center label">Este documento no es una factura.</div>
-        <div class="center label">Valido como presupuesto.</div>
+        <div class="center label">No es factura. Valido como presupuesto.</div>
       </body></html>
     `
     const result = await window.api.printReceipt(html)
@@ -216,17 +224,26 @@ export default function InvoicesPage(): JSX.Element {
       .join('') ?? ''
     const totalDisplay = fmt(inv.total_usd)
 
+    const settings = await window.api.getAllSettings()
+    const fs = parseInt(settings.receipt_font_size) || 14
+    const fw = settings.receipt_font_weight || '700'
+    const rTitle = (settings.receipt_title || '').trim()
+
     const html = `
       <html><head><title>${inv.invoice_number}</title>
       <style>
-        body { font-family: monospace; font-size: 12px; max-width: 300px; margin: 0 auto; padding: 10px; }
+        @page { size: 58mm auto; margin: 0; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm 2mm; }
         table { width: 100%; border-collapse: collapse; }
-        .divider { border-top: 1px dashed #000; margin: 8px 0; }
+        td, th { font-size: ${fs - 1}px; font-weight: ${fw}; padding: 2px 0; }
+        .divider { border-top: 1.5px solid #000; margin: 5px 0; }
         .center { text-align: center; }
         .right { text-align: right; }
-        .bold { font-weight: bold; }
+        .bold { font-weight: 900; }
       </style></head><body>
-        <div class="center bold">${inv.invoice_number}</div>
+        ${rTitle ? `<div class="center bold" style="font-size:${fs + 3}px">${rTitle}</div>` : ''}
+        <div class="center bold" style="font-size:${fs + 2}px">${inv.invoice_number}</div>
         <div class="center">${format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm')}</div>
         ${inv.customer_name ? `<div class="center">${inv.customer_name}</div>` : ''}
         <div class="divider"></div>
@@ -235,10 +252,10 @@ export default function InvoicesPage(): JSX.Element {
           ${itemsHtml}
         </table>
         <div class="divider"></div>
-        <div class="right bold">TOTAL: ${totalDisplay}</div>
+        <div class="right bold" style="font-size:${fs + 1}px">TOTAL: ${totalDisplay}</div>
         <div class="divider"></div>
         <div class="center">Pago: ${inv.payment_method === 'mixed' && inv.payments ? 'Mixto - ' + inv.payments.map((p: { method: string; amount: number }) => `${p.method}: $${p.amount.toFixed(2)}`).join(', ') : (paymentLabels[inv.payment_method] || inv.payment_method)}</div>
-        <div class="center" style="margin-top:10px">Gracias por su compra!</div>
+        <div class="center" style="margin-top:8px">Gracias por su compra!</div>
       </body></html>
     `
 
