@@ -520,7 +520,7 @@ export default function PosPage(): JSX.Element {
       <style>
         @page { size: 58mm auto; margin: 0; }
         * { box-sizing: border-box; }
-        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm 2mm; }
+        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm 5mm 3mm 2mm; }
         table { width: 100%; border-collapse: collapse; }
         td, th { font-size: ${fs - 1}px; font-weight: ${fw}; padding: 2px 0; }
         .divider { border-top: 1.5px solid #000; margin: 5px 0; }
