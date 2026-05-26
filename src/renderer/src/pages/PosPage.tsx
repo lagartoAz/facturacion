@@ -462,12 +462,6 @@ export default function PosPage(): JSX.Element {
       setPaymentCop('')
       setMixedPayments({ cash: '', card: '', transfer: '', credit: '' })
 
-      if (isStandaloneWindow) {
-        // In standalone mode, close the window after sale
-        window.close()
-        return
-      }
-
       setSuccessDialogOpen(true)
 
       if (printBehavior === 'always') {
@@ -514,13 +508,14 @@ export default function PosPage(): JSX.Element {
     const fs = parseInt(settings.receipt_font_size) || 14
     const fw = settings.receipt_font_weight || '700'
     const rTitle = (settings.receipt_title || '').trim()
+    const rm = parseInt(settings.receipt_margin) || 4
 
     const html = `
       <html><head><title>${inv.invoice_number}</title>
       <style>
         @page { size: 58mm auto; margin: 0; }
         * { box-sizing: border-box; }
-        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm 5mm 3mm 2mm; }
+        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm ${rm}mm; }
         table { width: 100%; border-collapse: collapse; }
         td, th { font-size: ${fs - 1}px; font-weight: ${fw}; padding: 2px 0; }
         .divider { border-top: 1.5px solid #000; margin: 5px 0; }
@@ -556,6 +551,10 @@ export default function PosPage(): JSX.Element {
   function handleCloseSuccess(): void {
     setSuccessDialogOpen(false)
     setCompletedInvoice(null)
+    if (isStandaloneWindow) {
+      window.close()
+      return
+    }
     barcodeInputRef.current?.focus()
   }
 

@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Save, Clock, ShieldCheck, FolderOpen, HardDrive, Usb, FileSpreadsheet, Package, FileText, Upload, AlertTriangle, Database, MoveRight, Printer, RefreshCw } from 'lucide-react'
+import { Save, Clock, ShieldCheck, FolderOpen, HardDrive, Usb, FileSpreadsheet, Package, FileText, Upload, AlertTriangle, Database, MoveRight, Printer, RefreshCw, Keyboard, X } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -43,6 +43,15 @@ interface PrinterEntry {
   isDefault: boolean
 }
 
+const SHORTCUT_DEFS = [
+  { key: 'shortcut_open_pos_window', label: 'Abrir Punto de Venta (ventana emergente)', defaultKey: 'p' },
+  { key: 'shortcut_nav_pos',       label: 'Ir a Punto de Venta (en la app)',           defaultKey: '' },
+  { key: 'shortcut_nav_invoices',  label: 'Ir a Facturas',                             defaultKey: '' },
+  { key: 'shortcut_nav_products',  label: 'Ir a Productos',                            defaultKey: '' },
+  { key: 'shortcut_nav_cash',      label: 'Ir a Caja',                                 defaultKey: '' },
+  { key: 'shortcut_nav_reports',   label: 'Ir a Reportes',                             defaultKey: '' },
+]
+
 const APP_VERSION = '1.9.0'
 
 export default function SettingsPage(): JSX.Element {
@@ -79,6 +88,10 @@ export default function SettingsPage(): JSX.Element {
   const [receiptTitle, setReceiptTitle] = useState('')
   const [receiptFontSize, setReceiptFontSize] = useState('14')
   const [receiptFontWeight, setReceiptFontWeight] = useState('700')
+  const [receiptMargin, setReceiptMargin] = useState('4')
+  const [shortcuts, setShortcuts] = useState<Record<string, string>>({})
+  const [capturingKey, setCapturingKey] = useState<string | null>(null)
+  const captureInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadSettings()
@@ -122,6 +135,8 @@ export default function SettingsPage(): JSX.Element {
     await window.api.setSetting('receipt_font_size', (fs >= 10 && fs <= 20 ? fs : 14).toString())
     await window.api.setSetting('receipt_font_weight', receiptFontWeight)
     await window.api.setSetting('receipt_title', receiptTitle.trim())
+    const rm = parseInt(receiptMargin)
+    await window.api.setSetting('receipt_margin', (rm >= 1 && rm <= 15 ? rm : 4).toString())
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -130,12 +145,13 @@ export default function SettingsPage(): JSX.Element {
     setPrintMessage('')
     const fs = parseInt(receiptFontSize) || 14
     const fw = receiptFontWeight || '700'
+    const rm = parseInt(receiptMargin) || 4
     const html = `
       <html><head><title>Prueba</title>
       <style>
         @page { size: 58mm auto; margin: 0; }
         * { box-sizing: border-box; }
-        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm 5mm 3mm 2mm; }
+        body { font-family: 'Courier New', Courier, monospace; font-size: ${fs}px; font-weight: ${fw}; color: #000; width: 58mm; margin: 0; padding: 3mm ${rm}mm; }
         .center { text-align: center; }
         .bold { font-weight: 900; }
         .divider { border-top: 1.5px solid #000; margin: 5px 0; }
@@ -154,6 +170,30 @@ export default function SettingsPage(): JSX.Element {
     if (result.success) setPrintMessage('Enviado a la impresora')
     else setPrintMessage(`Error: ${result.error ?? 'desconocido'}`)
     setTimeout(() => setPrintMessage(''), 5000)
+  }
+
+  async function saveShortcuts(): Promise<void> {
+    await Promise.all(Object.entries(shortcuts).map(([k, v]) => window.api.setSetting(k, v)))
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  function startCapture(key: string): void {
+    setCapturingKey(key)
+    setTimeout(() => captureInputRef.current?.focus(), 0)
+  }
+
+  function handleCaptureKeyDown(e: React.KeyboardEvent<HTMLInputElement>): void {
+    e.preventDefault()
+    if (e.key === 'Escape') { setCapturingKey(null); return }
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return
+    const parts: string[] = []
+    if (e.ctrlKey) parts.push('ctrl')
+    if (e.altKey) parts.push('alt')
+    if (e.shiftKey) parts.push('shift')
+    parts.push(e.key.toLowerCase())
+    setShortcuts((prev) => ({ ...prev, [capturingKey!]: parts.join('+') }))
+    setCapturingKey(null)
   }
 
   async function loadDbInfo(): Promise<void> {
@@ -290,6 +330,12 @@ export default function SettingsPage(): JSX.Element {
     setReceiptTitle(settings.receipt_title || '')
     setReceiptFontSize(settings.receipt_font_size || '14')
     setReceiptFontWeight(settings.receipt_font_weight || '700')
+    setReceiptMargin(settings.receipt_margin || '4')
+    const sc: Record<string, string> = {}
+    for (const def of SHORTCUT_DEFS) {
+      sc[def.key] = settings[def.key] ?? def.defaultKey
+    }
+    setShortcuts(sc)
   }
 
   async function saveRates(): Promise<void> {
@@ -481,7 +527,7 @@ export default function SettingsPage(): JSX.Element {
             />
             <p className="text-xs text-muted-foreground">Aparece en la parte superior de cada impresion. Dejar vacio para no mostrar.</p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Tamano de letra (px)</Label>
               <Input
@@ -492,6 +538,17 @@ export default function SettingsPage(): JSX.Element {
                 onChange={(e) => setReceiptFontSize(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">Recomendado: 13–15</p>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Margen lateral (mm)</Label>
+              <Input
+                type="number"
+                min="1"
+                max="15"
+                value={receiptMargin}
+                onChange={(e) => setReceiptMargin(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Aumentar si se corta el borde</p>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Grosor de letra</Label>
@@ -841,6 +898,70 @@ export default function SettingsPage(): JSX.Element {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Keyboard className="h-5 w-5" />
+            Atajos de Teclado
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Pulsa una tecla o combinacion (Ctrl, Alt, Shift + tecla). Los atajos funcionan cuando no estas escribiendo en un campo de texto.
+          </p>
+          <input
+            ref={captureInputRef}
+            className="sr-only"
+            onKeyDown={handleCaptureKeyDown}
+            onBlur={() => setCapturingKey(null)}
+            readOnly
+          />
+          <div className="space-y-2">
+            {SHORTCUT_DEFS.map((def) => (
+              <div key={def.key} className="flex items-center justify-between gap-3 rounded-md border p-2.5">
+                <span className="text-sm flex-1">{def.label}</span>
+                <div className="flex items-center gap-2">
+                  {capturingKey === def.key ? (
+                    <span className="text-xs bg-primary text-primary-foreground px-2 py-1 rounded animate-pulse">
+                      Presiona una tecla...
+                    </span>
+                  ) : (
+                    <span
+                      className={`text-xs font-mono px-2 py-1 rounded border min-w-[60px] text-center ${shortcuts[def.key] ? 'bg-muted font-semibold' : 'text-muted-foreground'}`}
+                    >
+                      {shortcuts[def.key] || 'sin atajo'}
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs px-2"
+                    onClick={() => startCapture(def.key)}
+                    disabled={capturingKey !== null && capturingKey !== def.key}
+                  >
+                    {capturingKey === def.key ? 'Cancelar' : 'Editar'}
+                  </Button>
+                  {shortcuts[def.key] && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0"
+                      onClick={() => setShortcuts((prev) => ({ ...prev, [def.key]: '' }))}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <Button onClick={saveShortcuts} size="sm">
+            <Save className="mr-2 h-4 w-4" />
+            Guardar Atajos
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="text-center text-sm text-muted-foreground pt-4">
         App desarrollada por El Garaje Gamer · v{APP_VERSION}
