@@ -43,7 +43,7 @@ interface PrinterEntry {
   isDefault: boolean
 }
 
-const APP_VERSION = '1.8.0'
+const APP_VERSION = '1.9.0'
 
 export default function SettingsPage(): JSX.Element {
   const [rateVes, setRateVes] = useState('')
