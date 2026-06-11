@@ -8,13 +8,15 @@ import {
   BarChart3,
   Settings,
   Landmark,
-  ClipboardList
+  ClipboardList,
+  Truck
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/products', label: 'Productos', icon: Package },
+  { to: '/suppliers', label: 'Proveedores', icon: Truck },
   { to: '/customers', label: 'Clientes', icon: Users },
   { to: '/quotes', label: 'Presupuestos', icon: ClipboardList },
   { to: '/invoices', label: 'Facturas', icon: FileText },

@@ -1,6 +1,6 @@
 {
   "name": "facturacion",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "description": "App de facturacion POS de escritorio offline",
   "type": "module",
   "main": "./out/main/index.js",

@@ -17,7 +17,7 @@ import {
   formatAmountIn,
   plainAmountIn
 } from '@/lib/currency'
-import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2 } from 'lucide-react'
+import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface Invoice {
@@ -68,10 +68,14 @@ interface Quote {
 
 type Tab = 'invoices' | 'quotes'
 
+const PAGE_SIZE = 20
+
 export default function InvoicesPage(): JSX.Element {
   const [tab, setTab] = useState<Tab>('invoices')
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [quotes, setQuotes] = useState<Quote[]>([])
+  const [invoicePage, setInvoicePage] = useState(1)
+  const [invoiceTotal, setInvoiceTotal] = useState(0)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -81,13 +85,19 @@ export default function InvoicesPage(): JSX.Element {
   const [notification, setNotification] = useState('')
 
   const loadInvoices = useCallback(async () => {
-    setInvoices(
-      await window.api.getInvoices({
-        from: dateFrom || undefined,
-        to: dateTo || undefined
-      })
-    )
-  }, [dateFrom, dateTo])
+    const filters = {
+      from: dateFrom || undefined,
+      to: dateTo || undefined,
+      page: invoicePage,
+      limit: PAGE_SIZE
+    }
+    const [data, total] = await Promise.all([
+      window.api.getInvoices(filters),
+      window.api.countInvoices({ from: dateFrom || undefined, to: dateTo || undefined })
+    ])
+    setInvoices(data)
+    setInvoiceTotal(total)
+  }, [dateFrom, dateTo, invoicePage])
 
   const loadQuotes = useCallback(async () => {
     setQuotes(
@@ -97,6 +107,10 @@ export default function InvoicesPage(): JSX.Element {
       })
     )
   }, [dateFrom, dateTo])
+
+  useEffect(() => {
+    setInvoicePage(1)
+  }, [dateFrom, dateTo, tab])
 
   useEffect(() => {
     if (tab === 'invoices') void loadInvoices()
@@ -367,6 +381,35 @@ export default function InvoicesPage(): JSX.Element {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {tab === 'invoices' && invoiceTotal > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            Mostrando {Math.min((invoicePage - 1) * PAGE_SIZE + 1, invoiceTotal)}–{Math.min(invoicePage * PAGE_SIZE, invoiceTotal)} de {invoiceTotal} facturas
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setInvoicePage((p) => p - 1)}
+              disabled={invoicePage <= 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="px-2 font-medium">
+              {invoicePage} / {Math.ceil(invoiceTotal / PAGE_SIZE)}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setInvoicePage((p) => p + 1)}
+              disabled={invoicePage * PAGE_SIZE >= invoiceTotal}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
 

@@ -17,6 +17,10 @@ export function registerInvoiceHandlers(db: Database.Database): void {
     return service.getAll(filters)
   })
 
+  ipcMain.handle('invoices:count', (_event, filters?: InvoiceFilters) => {
+    return service.count(filters)
+  })
+
   ipcMain.handle('invoices:getById', (_event, id: number) => {
     return service.getById(id)
   })

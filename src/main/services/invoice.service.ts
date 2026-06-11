@@ -64,6 +64,8 @@ export interface InvoiceFilters {
   to?: string
   status?: string
   customer_id?: number
+  page?: number
+  limit?: number
 }
 
 export class InvoiceService {
@@ -191,7 +193,21 @@ export class InvoiceService {
     }
 
     query += ' ORDER BY i.created_at DESC'
+    const limit = filters?.limit ?? 20
+    const page = filters?.page ?? 1
+    query += ' LIMIT ? OFFSET ?'
+    params.push(limit, (page - 1) * limit)
     return this.db.prepare(query).all(...params) as Invoice[]
+  }
+
+  count(filters?: InvoiceFilters): number {
+    let query = 'SELECT COUNT(*) as n FROM invoices i WHERE 1=1'
+    const params: unknown[] = []
+    if (filters?.from) { query += ' AND i.created_at >= ?'; params.push(filters.from) }
+    if (filters?.to) { query += ' AND i.created_at <= ?'; params.push(filters.to + ' 23:59:59') }
+    if (filters?.status) { query += ' AND i.status = ?'; params.push(filters.status) }
+    if (filters?.customer_id) { query += ' AND i.customer_id = ?'; params.push(filters.customer_id) }
+    return (this.db.prepare(query).get(...params) as { n: number }).n
   }
 
   getById(id: number): Invoice | undefined {

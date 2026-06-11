@@ -31,6 +31,8 @@ interface Product {
   cost_usd: number
   category_id: number | null
   category_name: string | null
+  supplier_id: number | null
+  supplier_name: string | null
   stock: number
   min_stock: number
   is_active: number
@@ -39,6 +41,11 @@ interface Product {
 }
 
 interface Category {
+  id: number
+  name: string
+}
+
+interface Supplier {
   id: number
   name: string
 }
@@ -59,6 +66,7 @@ const emptyForm = {
   price_usd: '',
   cost_usd: '',
   category_id: '',
+  supplier_id: '',
   stock: '',
   min_stock: '',
   is_by_weight: false
@@ -67,6 +75,7 @@ const emptyForm = {
 export default function ProductsPage(): JSX.Element {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -93,10 +102,15 @@ export default function ProductsPage(): JSX.Element {
     setCategories(await window.api.getCategories())
   }, [])
 
+  const loadSuppliers = useCallback(async () => {
+    setSuppliers(await window.api.getSuppliers())
+  }, [])
+
   useEffect(() => {
     loadProducts()
     loadCategories()
-  }, [loadProducts, loadCategories])
+    loadSuppliers()
+  }, [loadProducts, loadCategories, loadSuppliers])
 
   function openNewDialog(): void {
     setEditingId(null)
@@ -117,6 +131,7 @@ export default function ProductsPage(): JSX.Element {
       price_usd: String(p.price_usd),
       cost_usd: String(p.cost_usd),
       category_id: p.category_id ? String(p.category_id) : '',
+      supplier_id: p.supplier_id ? String(p.supplier_id) : '',
       stock: String(p.stock),
       min_stock: String(p.min_stock),
       is_by_weight: !!p.is_by_weight
@@ -160,6 +175,7 @@ export default function ProductsPage(): JSX.Element {
       price_usd: parseFloat(form.price_usd) || 0,
       cost_usd: parseFloat(form.cost_usd) || 0,
       category_id: form.category_id ? parseInt(form.category_id) : undefined,
+      supplier_id: form.supplier_id ? parseInt(form.supplier_id) : undefined,
       stock: parseInt(form.stock) || 0,
       min_stock: parseInt(form.min_stock) || 0,
       is_by_weight: form.is_by_weight ? 1 : 0
@@ -261,6 +277,7 @@ export default function ProductsPage(): JSX.Element {
               <th className="text-left p-3 font-medium">Codigo</th>
               <th className="text-left p-3 font-medium">Nombre</th>
               <th className="text-left p-3 font-medium">Categoria</th>
+              <th className="text-left p-3 font-medium">Proveedor</th>
               <th className="text-right p-3 font-medium">Precio USD</th>
               <th className="text-right p-3 font-medium">Stock</th>
               <th className="text-center p-3 font-medium">Estado</th>
@@ -286,6 +303,7 @@ export default function ProductsPage(): JSX.Element {
                 <td className="p-3 font-mono text-xs">{p.barcode || '-'}</td>
                 <td className="p-3">{p.name}</td>
                 <td className="p-3">{p.category_name || '-'}</td>
+                <td className="p-3 text-muted-foreground text-xs">{p.supplier_name || '-'}</td>
                 <td className="p-3 text-right">${p.price_usd.toFixed(2)}{p.is_by_weight ? '/kg' : ''}</td>
                 <td className="p-3 text-right">
                   <span className={p.stock <= p.min_stock ? 'text-red-500 font-semibold' : ''}>
@@ -316,7 +334,7 @@ export default function ProductsPage(): JSX.Element {
             ))}
             {products.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                <td colSpan={9} className="p-8 text-center text-muted-foreground">
                   No hay productos. Haz clic en "Nuevo Producto" para agregar uno.
                 </td>
               </tr>
@@ -464,6 +482,26 @@ export default function ProductsPage(): JSX.Element {
                   <Plus className="h-3 w-3" />
                 </Button>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Proveedor</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={form.supplier_id}
+                onChange={(e) => updateForm('supplier_id', e.target.value)}
+              >
+                <option value="">Sin proveedor</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              {suppliers.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No hay proveedores creados. Crealos en el apartado Proveedores del menu.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

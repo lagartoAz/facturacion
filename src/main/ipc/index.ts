@@ -12,6 +12,7 @@ import { registerExportHandlers } from './export.ipc'
 import { registerQuoteHandlers } from './quotes.ipc'
 import { registerDbLocationHandlers } from './db-location.ipc'
 import { registerPrinterHandlers } from './printer.ipc'
+import { registerSupplierHandlers } from './suppliers.ipc'
 
 export function registerAllHandlers(db: Database.Database): void {
   registerProductHandlers(db)
@@ -27,4 +28,5 @@ export function registerAllHandlers(db: Database.Database): void {
   registerQuoteHandlers(db)
   registerDbLocationHandlers()
   registerPrinterHandlers(db)
+  registerSupplierHandlers(db)
 }

@@ -52,7 +52,7 @@ const SHORTCUT_DEFS = [
   { key: 'shortcut_nav_reports',   label: 'Ir a Reportes',                             defaultKey: '' },
 ]
 
-const APP_VERSION = '1.9.0'
+const APP_VERSION = '1.10.0'
 
 export default function SettingsPage(): JSX.Element {
   const [rateVes, setRateVes] = useState('')
@@ -372,8 +372,8 @@ export default function SettingsPage(): JSX.Element {
               <Label htmlFor="rateVes">1 USD = X Bolivares (VES)</Label>
               <Input
                 id="rateVes"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={rateVes}
                 onChange={(e) => setRateVes(e.target.value)}
                 placeholder="36.50"
@@ -383,8 +383,8 @@ export default function SettingsPage(): JSX.Element {
               <Label htmlFor="rateCop">1 USD = X Pesos (COP)</Label>
               <Input
                 id="rateCop"
-                type="number"
-                step="1"
+                type="text"
+                inputMode="decimal"
                 value={rateCop}
                 onChange={(e) => setRateCop(e.target.value)}
                 placeholder="4200"

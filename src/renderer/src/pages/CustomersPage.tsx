@@ -30,6 +30,7 @@ interface CreditInvoice {
   invoice_number: string
   total_usd: number
   created_at: string
+  pendingAmount?: number
 }
 
 interface Payment {
@@ -122,18 +123,40 @@ export default function CustomersPage(): JSX.Element {
     }
   }
 
+  function applyFifoToInvoices(invoices: CreditInvoice[], totalPaid: number): CreditInvoice[] {
+    const sorted = [...invoices].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+    let remaining = totalPaid
+    const result = sorted.map((inv) => {
+      if (remaining >= inv.total_usd) {
+        remaining -= inv.total_usd
+        return { ...inv, pendingAmount: 0 }
+      } else {
+        const pendingAmount = inv.total_usd - remaining
+        remaining = 0
+        return { ...inv, pendingAmount }
+      }
+    })
+    return result.sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+  }
+
   async function openDebt(c: Customer): Promise<void> {
     setDebtCustomer(c)
     setPaymentAmount('')
     setPaymentNotes('')
+    setDebtBalance(balances[c.id] ?? 0)
     setDebtDialogOpen(true)
     const [balance, invoices, pays] = await Promise.all([
       window.api.getCustomerBalance(c.id),
       window.api.getCustomerCreditInvoices(c.id),
       window.api.getCustomerPayments(c.id)
     ])
+    const totalPaid = pays.reduce((sum: number, p: Payment) => sum + p.amount_usd, 0)
     setDebtBalance(balance)
-    setCreditInvoices(invoices)
+    setCreditInvoices(applyFifoToInvoices(invoices, totalPaid))
     setPayments(pays)
   }
 
@@ -142,12 +165,14 @@ export default function CustomersPage(): JSX.Element {
     const amount = parseFloat(paymentAmount)
     if (isNaN(amount) || amount <= 0 || amount > debtBalance) return
     await window.api.addCustomerPayment(debtCustomer.id, amount, paymentNotes || undefined)
-    // Reload debt data
-    const [balance, pays] = await Promise.all([
+    const [balance, invoices, pays] = await Promise.all([
       window.api.getCustomerBalance(debtCustomer.id),
+      window.api.getCustomerCreditInvoices(debtCustomer.id),
       window.api.getCustomerPayments(debtCustomer.id)
     ])
+    const totalPaid = pays.reduce((sum: number, p: Payment) => sum + p.amount_usd, 0)
     setDebtBalance(balance)
+    setCreditInvoices(applyFifoToInvoices(invoices, totalPaid))
     setPayments(pays)
     setPaymentAmount('')
     setPaymentNotes('')
@@ -308,23 +333,38 @@ export default function CustomersPage(): JSX.Element {
               {creditInvoices.length > 0 && (
                 <div>
                   <p className="text-sm font-medium mb-2">Facturas a credito</p>
-                  <div className="border rounded overflow-hidden max-h-40 overflow-y-auto">
+                  <div className="border rounded overflow-hidden max-h-48 overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50">
                         <tr>
                           <th className="text-left p-2 font-medium">Factura</th>
                           <th className="text-left p-2 font-medium">Fecha</th>
-                          <th className="text-right p-2 font-medium">Monto</th>
+                          <th className="text-right p-2 font-medium">Total</th>
+                          <th className="text-right p-2 font-medium">Pendiente</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {creditInvoices.map((inv) => (
-                          <tr key={inv.id} className="border-t">
-                            <td className="p-2 font-mono text-xs">{inv.invoice_number}</td>
-                            <td className="p-2">{format(new Date(inv.created_at), 'dd/MM/yyyy')}</td>
-                            <td className="p-2 text-right">{formatUSD(inv.total_usd)}</td>
-                          </tr>
-                        ))}
+                        {creditInvoices.map((inv) => {
+                          const pending = inv.pendingAmount ?? inv.total_usd
+                          const isPaid = pending === 0
+                          const isPartial = pending > 0 && pending < inv.total_usd
+                          return (
+                            <tr key={inv.id} className={`border-t ${isPaid ? 'opacity-50' : ''}`}>
+                              <td className="p-2 font-mono text-xs">{inv.invoice_number}</td>
+                              <td className="p-2">{format(new Date(inv.created_at), 'dd/MM/yyyy')}</td>
+                              <td className="p-2 text-right text-muted-foreground">{formatUSD(inv.total_usd)}</td>
+                              <td className="p-2 text-right">
+                                {isPaid ? (
+                                  <span className="text-green-600 font-medium">Pagada</span>
+                                ) : (
+                                  <span className={`font-semibold ${isPartial ? 'text-yellow-600' : 'text-red-600'}`}>
+                                    {formatUSD(pending)}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>

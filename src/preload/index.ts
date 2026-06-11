@@ -46,11 +46,23 @@ const api = {
   getCustomerPayments: (id: number) =>
     ipcRenderer.invoke('customers:getPayments', id),
 
+  // Suppliers
+  getSuppliers: (search?: string) =>
+    ipcRenderer.invoke('suppliers:getAll', search),
+  createSupplier: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke('suppliers:create', data),
+  updateSupplier: (id: number, data: Record<string, unknown>) =>
+    ipcRenderer.invoke('suppliers:update', id, data),
+  deleteSupplier: (id: number) =>
+    ipcRenderer.invoke('suppliers:delete', id),
+
   // Invoices
   createInvoice: (data: Record<string, unknown>) =>
     ipcRenderer.invoke('invoices:create', data),
   getInvoices: (filters?: Record<string, unknown>) =>
     ipcRenderer.invoke('invoices:getAll', filters),
+  countInvoices: (filters?: Record<string, unknown>) =>
+    ipcRenderer.invoke('invoices:count', filters),
   getInvoiceById: (id: number) =>
     ipcRenderer.invoke('invoices:getById', id),
   voidInvoice: (id: number) =>

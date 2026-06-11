@@ -12,6 +12,8 @@ export interface Product {
   cost_usd: number
   category_id: number | null
   category_name?: string
+  supplier_id: number | null
+  supplier_name?: string
   stock: number
   min_stock: number
   is_active: number
@@ -28,6 +30,7 @@ export interface CreateProductDTO {
   price_usd: number
   cost_usd?: number
   category_id?: number
+  supplier_id?: number
   stock?: number
   min_stock?: number
   is_by_weight?: number
@@ -46,9 +49,10 @@ export class ProductService {
 
   getAll(filters?: ProductFilters): Product[] {
     let query = `
-      SELECT p.*, c.name as category_name
+      SELECT p.*, c.name as category_name, s.name as supplier_name
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN suppliers s ON p.supplier_id = s.id
       WHERE 1=1
     `
     const params: unknown[] = []
@@ -73,8 +77,10 @@ export class ProductService {
   getByBarcode(barcode: string): Product | undefined {
     return this.db
       .prepare(
-        `SELECT p.*, c.name as category_name
-         FROM products p LEFT JOIN categories c ON p.category_id = c.id
+        `SELECT p.*, c.name as category_name, s.name as supplier_name
+         FROM products p
+         LEFT JOIN categories c ON p.category_id = c.id
+         LEFT JOIN suppliers s ON p.supplier_id = s.id
          WHERE p.barcode = ? AND p.is_active = 1`
       )
       .get(barcode) as Product | undefined
@@ -84,8 +90,10 @@ export class ProductService {
     const s = `%${query}%`
     return this.db
       .prepare(
-        `SELECT p.*, c.name as category_name
-         FROM products p LEFT JOIN categories c ON p.category_id = c.id
+        `SELECT p.*, c.name as category_name, s.name as supplier_name
+         FROM products p
+         LEFT JOIN categories c ON p.category_id = c.id
+         LEFT JOIN suppliers s ON p.supplier_id = s.id
          WHERE p.is_active = 1 AND (p.name LIKE ? OR p.barcode LIKE ?)
          ORDER BY p.name ASC LIMIT 20`
       )
@@ -95,8 +103,8 @@ export class ProductService {
   create(data: CreateProductDTO): Product {
     const result = this.db
       .prepare(
-        `INSERT INTO products (barcode, name, description, price_usd, cost_usd, category_id, stock, min_stock, is_by_weight)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO products (barcode, name, description, price_usd, cost_usd, category_id, supplier_id, stock, min_stock, is_by_weight)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         data.barcode || null,
@@ -105,12 +113,17 @@ export class ProductService {
         data.price_usd,
         data.cost_usd ?? 0,
         data.category_id || null,
+        data.supplier_id || null,
         data.stock ?? 0,
         data.min_stock ?? 0,
         data.is_by_weight ?? 0
       )
     return this.db
-      .prepare('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?')
+      .prepare(`SELECT p.*, c.name as category_name, s.name as supplier_name
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
+                LEFT JOIN suppliers s ON p.supplier_id = s.id
+                WHERE p.id = ?`)
       .get(result.lastInsertRowid) as Product
   }
 
@@ -124,6 +137,7 @@ export class ProductService {
     if (data.price_usd !== undefined) { fields.push('price_usd = ?'); params.push(data.price_usd) }
     if (data.cost_usd !== undefined) { fields.push('cost_usd = ?'); params.push(data.cost_usd) }
     if (data.category_id !== undefined) { fields.push('category_id = ?'); params.push(data.category_id || null) }
+    if (data.supplier_id !== undefined) { fields.push('supplier_id = ?'); params.push(data.supplier_id || null) }
     if (data.stock !== undefined) { fields.push('stock = ?'); params.push(data.stock) }
     if (data.min_stock !== undefined) { fields.push('min_stock = ?'); params.push(data.min_stock) }
     if (data.is_by_weight !== undefined) { fields.push('is_by_weight = ?'); params.push(data.is_by_weight) }
@@ -135,7 +149,11 @@ export class ProductService {
     }
 
     return this.db
-      .prepare('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?')
+      .prepare(`SELECT p.*, c.name as category_name, s.name as supplier_name
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
+                LEFT JOIN suppliers s ON p.supplier_id = s.id
+                WHERE p.id = ?`)
       .get(id) as Product
   }
 

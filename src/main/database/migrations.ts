@@ -294,4 +294,23 @@ export function runMigrations(db: Database.Database): void {
     db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('next_quote_number', '1')").run()
     db.pragma('user_version = 15')
   }
+
+  if (version < 16) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        name         TEXT NOT NULL,
+        contact_name TEXT,
+        phone        TEXT,
+        email        TEXT,
+        address      TEXT,
+        notes        TEXT,
+        created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+        updated_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_suppliers_name ON suppliers(name);
+      ALTER TABLE products ADD COLUMN supplier_id INTEGER REFERENCES suppliers(id) ON DELETE SET NULL;
+    `)
+    db.pragma('user_version = 16')
+  }
 }
