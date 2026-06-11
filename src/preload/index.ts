@@ -4,6 +4,8 @@ const api = {
   // Products
   getProducts: (filters?: Record<string, unknown>) =>
     ipcRenderer.invoke('products:getAll', filters),
+  countProducts: (filters?: Record<string, unknown>) =>
+    ipcRenderer.invoke('products:count', filters),
   getProductByBarcode: (barcode: string) =>
     ipcRenderer.invoke('products:getByBarcode', barcode),
   searchProducts: (query: string) =>

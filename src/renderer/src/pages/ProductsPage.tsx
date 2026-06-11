@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import { formatUSD } from '@/lib/currency'
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, Package, BarChart3, Trash2 } from 'lucide-react'
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, Package, BarChart3, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -59,6 +59,8 @@ interface ProductStats {
   monthly_sales: { month: string; quantity: number; revenue: number }[]
 }
 
+const PRODUCT_PAGE_SIZE = 20
+
 const emptyForm = {
   barcode: '',
   name: '',
@@ -74,6 +76,8 @@ const emptyForm = {
 
 export default function ProductsPage(): JSX.Element {
   const [products, setProducts] = useState<Product[]>([])
+  const [productTotal, setProductTotal] = useState(0)
+  const [productPage, setProductPage] = useState(1)
   const [categories, setCategories] = useState<Category[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [search, setSearch] = useState('')
@@ -91,12 +95,14 @@ export default function ProductsPage(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProducts = useCallback(async () => {
-    const data = await window.api.getProducts({
-      search: search || undefined,
-      active_only: false
-    })
+    const filters = { search: search || undefined, active_only: false, page: productPage, limit: PRODUCT_PAGE_SIZE }
+    const [data, total] = await Promise.all([
+      window.api.getProducts(filters),
+      window.api.countProducts({ search: search || undefined, active_only: false })
+    ])
     setProducts(data)
-  }, [search])
+    setProductTotal(total)
+  }, [search, productPage])
 
   const loadCategories = useCallback(async () => {
     setCategories(await window.api.getCategories())
@@ -105,6 +111,10 @@ export default function ProductsPage(): JSX.Element {
   const loadSuppliers = useCallback(async () => {
     setSuppliers(await window.api.getSuppliers())
   }, [])
+
+  useEffect(() => {
+    setProductPage(1)
+  }, [search])
 
   useEffect(() => {
     loadProducts()
@@ -342,6 +352,23 @@ export default function ProductsPage(): JSX.Element {
           </tbody>
         </table>
       </div>
+
+      {productTotal > PRODUCT_PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            Mostrando {Math.min((productPage - 1) * PRODUCT_PAGE_SIZE + 1, productTotal)}–{Math.min(productPage * PRODUCT_PAGE_SIZE, productTotal)} de {productTotal} productos
+          </span>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="icon" onClick={() => setProductPage((p) => p - 1)} disabled={productPage <= 1}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="px-2 font-medium">{productPage} / {Math.ceil(productTotal / PRODUCT_PAGE_SIZE)}</span>
+            <Button variant="outline" size="icon" onClick={() => setProductPage((p) => p + 1)} disabled={productPage * PRODUCT_PAGE_SIZE >= productTotal}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">

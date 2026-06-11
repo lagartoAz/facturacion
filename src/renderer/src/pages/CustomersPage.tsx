@@ -12,7 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { formatUSD } from '@/lib/currency'
-import { Plus, Search, Pencil, Trash2, Wallet } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface Customer {
@@ -40,6 +40,19 @@ interface Payment {
   created_at: string
 }
 
+interface InvoiceDetail {
+  id: number
+  invoice_number: string
+  customer_name: string | null
+  total_usd: number
+  created_at: string
+  payment_method: string
+  items: { product_name: string; quantity: number; unit_price: number; subtotal: number }[]
+}
+
+type DebtFilter = 'all' | 'debtor' | 'solvent' | 'extreme'
+const CUSTOMER_PAGE_SIZE = 20
+
 const emptyForm = {
   name: '',
   id_rif: '',
@@ -63,6 +76,11 @@ export default function CustomersPage(): JSX.Element {
   const [payments, setPayments] = useState<Payment[]>([])
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
+  const [debtFilter, setDebtFilter] = useState<DebtFilter>('all')
+  const [customerPage, setCustomerPage] = useState(1)
+  const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false)
+  const [invoiceDetail, setInvoiceDetail] = useState<InvoiceDetail | null>(null)
+  const [invoiceDetailPending, setInvoiceDetailPending] = useState(0)
 
   const loadCustomers = useCallback(async () => {
     const [customersData, balancesData] = await Promise.all([
@@ -72,6 +90,10 @@ export default function CustomersPage(): JSX.Element {
     setCustomers(customersData)
     setBalances(balancesData)
   }, [search])
+
+  useEffect(() => {
+    setCustomerPage(1)
+  }, [search, debtFilter])
 
   useEffect(() => {
     loadCustomers()
@@ -179,6 +201,33 @@ export default function CustomersPage(): JSX.Element {
     loadCustomers()
   }
 
+  async function openInvoiceDetail(inv: CreditInvoice): Promise<void> {
+    const data = await window.api.getInvoiceById(inv.id)
+    setInvoiceDetail(data)
+    setInvoiceDetailPending(inv.pendingAmount ?? inv.total_usd)
+    setInvoiceDetailOpen(true)
+  }
+
+  async function payInvoiceFromDetail(): Promise<void> {
+    if (!debtCustomer || !invoiceDetail || invoiceDetailPending <= 0) return
+    await window.api.addCustomerPayment(
+      debtCustomer.id,
+      invoiceDetailPending,
+      `Pago factura ${invoiceDetail.invoice_number}`
+    )
+    setInvoiceDetailOpen(false)
+    const [balance, invoices, pays] = await Promise.all([
+      window.api.getCustomerBalance(debtCustomer.id),
+      window.api.getCustomerCreditInvoices(debtCustomer.id),
+      window.api.getCustomerPayments(debtCustomer.id)
+    ])
+    const totalPaid = pays.reduce((sum: number, p: Payment) => sum + p.amount_usd, 0)
+    setDebtBalance(balance)
+    setCreditInvoices(applyFifoToInvoices(invoices, totalPaid))
+    setPayments(pays)
+    loadCustomers()
+  }
+
   function getDebtBadge(customerId: number): { label: string; variant: 'default' | 'secondary' | 'destructive'; className?: string } {
     const balance = balances[customerId] ?? 0
     if (balance <= 0) return { label: 'Solvente', variant: 'default', className: 'bg-green-600 hover:bg-green-700' }
@@ -200,64 +249,115 @@ export default function CustomersPage(): JSX.Element {
         </Button>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-        <Input
-          className="pl-9"
-          placeholder="Buscar por nombre o RIF..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Buscar por nombre o RIF..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-1 rounded-lg border p-1">
+          {([
+            ['all',     'Todos'],
+            ['debtor',  'Deudores'],
+            ['solvent', 'Solventes'],
+            ['extreme', 'Deuda extrema'],
+          ] as [DebtFilter, string][]).map(([val, label]) => (
+            <Button
+              key={val}
+              size="sm"
+              variant={debtFilter === val ? 'default' : 'ghost'}
+              onClick={() => setDebtFilter(val)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="text-left p-3 font-medium">Nombre</th>
-              <th className="text-left p-3 font-medium">RIF / Cedula</th>
-              <th className="text-left p-3 font-medium">Telefono</th>
-              <th className="text-left p-3 font-medium">Email</th>
-              <th className="text-center p-3 font-medium">Estado</th>
-              <th className="text-center p-3 font-medium">Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {customers.map((c) => (
-              <tr key={c.id} className="border-t hover:bg-muted/30">
-                <td className="p-3 font-medium">{c.name}</td>
-                <td className="p-3">{c.id_rif || '-'}</td>
-                <td className="p-3">{c.phone || '-'}</td>
-                <td className="p-3">{c.email || '-'}</td>
-                <td className="p-3 text-center">
-                  {(() => {
-                    const badge = getDebtBadge(c.id)
-                    return <Badge variant={badge.variant} className={badge.className}>{badge.label}</Badge>
-                  })()}
-                </td>
-                <td className="p-3 text-center space-x-1">
-                  <Button variant="ghost" size="icon" onClick={() => openDebt(c)} title="Ver deuda">
-                    <Wallet className="h-4 w-4" />
+      {(() => {
+        const filtered = customers.filter((c) => {
+          const bal = balances[c.id] ?? 0
+          if (debtFilter === 'debtor')  return bal > 0
+          if (debtFilter === 'solvent') return bal <= 0
+          if (debtFilter === 'extreme') return bal > 50
+          return true
+        })
+        const totalPages = Math.ceil(filtered.length / CUSTOMER_PAGE_SIZE)
+        const page = Math.min(customerPage, totalPages || 1)
+        const paged = filtered.slice((page - 1) * CUSTOMER_PAGE_SIZE, page * CUSTOMER_PAGE_SIZE)
+        return (
+          <>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left p-3 font-medium">Nombre</th>
+                    <th className="text-left p-3 font-medium">RIF / Cedula</th>
+                    <th className="text-left p-3 font-medium">Telefono</th>
+                    <th className="text-left p-3 font-medium">Email</th>
+                    <th className="text-center p-3 font-medium">Estado</th>
+                    <th className="text-center p-3 font-medium">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paged.map((c) => (
+                    <tr key={c.id} className="border-t hover:bg-muted/30">
+                      <td className="p-3 font-medium">{c.name}</td>
+                      <td className="p-3">{c.id_rif || '-'}</td>
+                      <td className="p-3">{c.phone || '-'}</td>
+                      <td className="p-3">{c.email || '-'}</td>
+                      <td className="p-3 text-center">
+                        {(() => {
+                          const badge = getDebtBadge(c.id)
+                          return <Badge variant={badge.variant} className={badge.className}>{badge.label}</Badge>
+                        })()}
+                      </td>
+                      <td className="p-3 text-center space-x-1">
+                        <Button variant="ghost" size="icon" onClick={() => openDebt(c)} title="Ver deuda">
+                          <Wallet className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Editar">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)} title="Eliminar">
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                  {paged.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                        {customers.length === 0 ? 'No hay clientes registrados.' : 'Sin resultados para el filtro seleccionado.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {filtered.length > CUSTOMER_PAGE_SIZE && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  Mostrando {Math.min((page - 1) * CUSTOMER_PAGE_SIZE + 1, filtered.length)}–{Math.min(page * CUSTOMER_PAGE_SIZE, filtered.length)} de {filtered.length} clientes
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="icon" onClick={() => setCustomerPage((p) => p - 1)} disabled={page <= 1}>
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Editar">
-                    <Pencil className="h-4 w-4" />
+                  <span className="px-2 font-medium">{page} / {totalPages}</span>
+                  <Button variant="outline" size="icon" onClick={() => setCustomerPage((p) => p + 1)} disabled={page >= totalPages}>
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)} title="Eliminar">
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                </td>
-              </tr>
-            ))}
-            {customers.length === 0 && (
-              <tr>
-                <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                  No hay clientes registrados.
-                </td>
-              </tr>
+                </div>
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
+          </>
+        )
+      })()}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-md">
@@ -341,6 +441,7 @@ export default function CustomersPage(): JSX.Element {
                           <th className="text-left p-2 font-medium">Fecha</th>
                           <th className="text-right p-2 font-medium">Total</th>
                           <th className="text-right p-2 font-medium">Pendiente</th>
+                          <th className="p-2" />
                         </tr>
                       </thead>
                       <tbody>
@@ -360,6 +461,19 @@ export default function CustomersPage(): JSX.Element {
                                   <span className={`font-semibold ${isPartial ? 'text-yellow-600' : 'text-red-600'}`}>
                                     {formatUSD(pending)}
                                   </span>
+                                )}
+                              </td>
+                              <td className="p-2">
+                                {!isPaid && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    title="Ver y pagar factura"
+                                    onClick={() => openInvoiceDetail(inv)}
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </Button>
                                 )}
                               </td>
                             </tr>
@@ -438,6 +552,80 @@ export default function CustomersPage(): JSX.Element {
                   </div>
                 </>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      {/* Invoice detail dialog */}
+      <Dialog open={invoiceDetailOpen} onOpenChange={setInvoiceDetailOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              {invoiceDetail?.invoice_number}
+            </DialogTitle>
+          </DialogHeader>
+          {invoiceDetail && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 text-sm gap-2">
+                <div>
+                  <span className="text-muted-foreground">Fecha: </span>
+                  {format(new Date(invoiceDetail.created_at), 'dd/MM/yyyy HH:mm')}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Cliente: </span>
+                  {invoiceDetail.customer_name || 'Consumidor Final'}
+                </div>
+              </div>
+
+              <div className="border rounded overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-2 font-medium">Producto</th>
+                      <th className="text-center p-2 font-medium">Cant</th>
+                      <th className="text-right p-2 font-medium">P.U.</th>
+                      <th className="text-right p-2 font-medium">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoiceDetail.items?.map((item, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="p-2">{item.product_name}</td>
+                        <td className="p-2 text-center">{item.quantity}</td>
+                        <td className="p-2 text-right">{formatUSD(item.unit_price)}</td>
+                        <td className="p-2 text-right">{formatUSD(item.subtotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-between text-sm font-bold">
+                <span>Total factura</span>
+                <span>{formatUSD(invoiceDetail.total_usd)}</span>
+              </div>
+
+              {invoiceDetailPending < invoiceDetail.total_usd && (
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>Ya abonado</span>
+                  <span className="text-green-600">{formatUSD(invoiceDetail.total_usd - invoiceDetailPending)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center p-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900">
+                <span className="text-sm font-medium">Pendiente por cobrar</span>
+                <span className="text-lg font-bold text-red-600">{formatUSD(invoiceDetailPending)}</span>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setInvoiceDetailOpen(false)}>
+                  Cerrar
+                </Button>
+                <Button onClick={payInvoiceFromDetail} className="bg-green-600 hover:bg-green-700">
+                  Registrar pago {formatUSD(invoiceDetailPending)}
+                </Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>

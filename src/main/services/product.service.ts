@@ -42,6 +42,8 @@ export interface ProductFilters {
   category_id?: number
   search?: string
   active_only?: boolean
+  page?: number
+  limit?: number
 }
 
 export class ProductService {
@@ -70,8 +72,25 @@ export class ProductService {
       params.push(s, s)
     }
 
-    query += ' ORDER BY p.name ASC'
+    query += ' ORDER BY p.stock ASC, p.name ASC'
+    const limit = filters?.limit ?? 20
+    const page = filters?.page ?? 1
+    query += ' LIMIT ? OFFSET ?'
+    params.push(limit, (page - 1) * limit)
     return this.db.prepare(query).all(...params) as Product[]
+  }
+
+  count(filters?: ProductFilters): number {
+    let query = 'SELECT COUNT(*) as n FROM products p WHERE 1=1'
+    const params: unknown[] = []
+    if (filters?.active_only !== false) { query += ' AND p.is_active = 1' }
+    if (filters?.category_id) { query += ' AND p.category_id = ?'; params.push(filters.category_id) }
+    if (filters?.search) {
+      query += ' AND (p.name LIKE ? OR p.barcode LIKE ?)'
+      const s = `%${filters.search}%`
+      params.push(s, s)
+    }
+    return (this.db.prepare(query).get(...params) as { n: number }).n
   }
 
   getByBarcode(barcode: string): Product | undefined {

@@ -52,7 +52,7 @@ const SHORTCUT_DEFS = [
   { key: 'shortcut_nav_reports',   label: 'Ir a Reportes',                             defaultKey: '' },
 ]
 
-const APP_VERSION = '1.10.0'
+const APP_VERSION = '1.10.1'
 
 export default function SettingsPage(): JSX.Element {
   const [rateVes, setRateVes] = useState('')
