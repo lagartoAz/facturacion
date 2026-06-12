@@ -15,6 +15,10 @@ export function registerProductHandlers(db: Database.Database): void {
     return service.count(filters)
   })
 
+  ipcMain.handle('products:inventoryTotals', (_event, filters?: ProductFilters) => {
+    return service.getInventoryTotals(filters)
+  })
+
   ipcMain.handle('products:getByBarcode', (_event, barcode: string) => {
     return service.getByBarcode(barcode)
   })

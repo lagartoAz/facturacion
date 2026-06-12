@@ -6,6 +6,8 @@ const api = {
     ipcRenderer.invoke('products:getAll', filters),
   countProducts: (filters?: Record<string, unknown>) =>
     ipcRenderer.invoke('products:count', filters),
+  getInventoryTotals: (filters?: Record<string, unknown>): Promise<{ total_units: number; total_invested: number }> =>
+    ipcRenderer.invoke('products:inventoryTotals', filters),
   getProductByBarcode: (barcode: string) =>
     ipcRenderer.invoke('products:getByBarcode', barcode),
   searchProducts: (query: string) =>

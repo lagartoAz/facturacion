@@ -78,6 +78,7 @@ export default function ProductsPage(): JSX.Element {
   const [products, setProducts] = useState<Product[]>([])
   const [productTotal, setProductTotal] = useState(0)
   const [productPage, setProductPage] = useState(1)
+  const [inventoryTotals, setInventoryTotals] = useState({ total_units: 0, total_invested: 0 })
   const [categories, setCategories] = useState<Category[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [search, setSearch] = useState('')
@@ -95,13 +96,15 @@ export default function ProductsPage(): JSX.Element {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const loadProducts = useCallback(async () => {
-    const filters = { search: search || undefined, active_only: false, page: productPage, limit: PRODUCT_PAGE_SIZE }
-    const [data, total] = await Promise.all([
-      window.api.getProducts(filters),
-      window.api.countProducts({ search: search || undefined, active_only: false })
+    const baseFilters = { search: search || undefined, active_only: false }
+    const [data, total, totals] = await Promise.all([
+      window.api.getProducts({ ...baseFilters, page: productPage, limit: PRODUCT_PAGE_SIZE }),
+      window.api.countProducts(baseFilters),
+      window.api.getInventoryTotals(baseFilters)
     ])
     setProducts(data)
     setProductTotal(total)
+    setInventoryTotals(totals)
   }, [search, productPage])
 
   const loadCategories = useCallback(async () => {
@@ -273,9 +276,9 @@ export default function ProductsPage(): JSX.Element {
           />
         </div>
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span><strong className="text-foreground">{products.length}</strong> productos</span>
-          <span><strong className="text-foreground">{products.reduce((sum, p) => sum + (p.is_by_weight ? 0 : p.stock), 0)}</strong> unidades</span>
-          <span>Invertido: <strong className="text-foreground">{formatUSD(products.reduce((sum, p) => sum + (p.cost_usd || p.price_usd) * (p.is_by_weight ? 0 : p.stock), 0))}</strong></span>
+          <span><strong className="text-foreground">{productTotal}</strong> productos</span>
+          <span><strong className="text-foreground">{inventoryTotals.total_units}</strong> unidades</span>
+          <span>Invertido: <strong className="text-foreground">{formatUSD(inventoryTotals.total_invested)}</strong></span>
         </div>
       </div>
 

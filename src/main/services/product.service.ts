@@ -93,6 +93,24 @@ export class ProductService {
     return (this.db.prepare(query).get(...params) as { n: number }).n
   }
 
+  getInventoryTotals(filters?: ProductFilters): { total_units: number; total_invested: number } {
+    let query = `
+      SELECT
+        COALESCE(SUM(CASE WHEN p.is_by_weight = 0 THEN p.stock ELSE 0 END), 0) as total_units,
+        COALESCE(SUM(CASE WHEN p.is_by_weight = 0 THEN (CASE WHEN p.cost_usd > 0 THEN p.cost_usd ELSE p.price_usd END) * p.stock ELSE 0 END), 0) as total_invested
+      FROM products p WHERE 1=1
+    `
+    const params: unknown[] = []
+    if (filters?.active_only !== false) { query += ' AND p.is_active = 1' }
+    if (filters?.category_id) { query += ' AND p.category_id = ?'; params.push(filters.category_id) }
+    if (filters?.search) {
+      query += ' AND (p.name LIKE ? OR p.barcode LIKE ?)'
+      const s = `%${filters.search}%`
+      params.push(s, s)
+    }
+    return this.db.prepare(query).get(...params) as { total_units: number; total_invested: number }
+  }
+
   getByBarcode(barcode: string): Product | undefined {
     return this.db
       .prepare(
