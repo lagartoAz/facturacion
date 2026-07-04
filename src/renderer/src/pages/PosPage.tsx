@@ -26,6 +26,7 @@ import {
   Barcode,
   Plus,
   Minus,
+  Pencil,
   Trash2,
   Search,
   ShoppingCart,
@@ -154,6 +155,8 @@ export default function PosPage(): JSX.Element {
   const isStandaloneWindow = location.pathname === '/pos-window'
 
   const [cart, setCart] = useState<CartItem[]>([])
+  const [editingQtyId, setEditingQtyId] = useState<number | null>(null)
+  const [editingQtyValue, setEditingQtyValue] = useState('')
   const [rates, setRates] = useState<ExchangeRate[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [weightDialogOpen, setWeightDialogOpen] = useState(false)
@@ -344,6 +347,27 @@ export default function PosPage(): JSX.Element {
         })
         .filter(Boolean) as CartItem[]
     )
+  }
+
+  function setQuantityExact(productId: number, value: string): void {
+    const qty = parseInt(value, 10)
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setEditingQtyId(null)
+      setEditingQtyValue('')
+      return
+    }
+    setCart((prev) =>
+      prev.map((item) => {
+        if (item.productId !== productId) return item
+        if (qty > item.stock) {
+          showNotification('Stock insuficiente')
+          return { ...item, quantity: item.stock }
+        }
+        return { ...item, quantity: qty }
+      })
+    )
+    setEditingQtyId(null)
+    setEditingQtyValue('')
   }
 
   function removeFromCart(productId: number): void {
@@ -628,7 +652,41 @@ export default function PosPage(): JSX.Element {
                       >
                         <Minus className="h-3 w-3" />
                       </Button>
-                      <span className="w-8 text-center font-medium">{item.quantity}</span>
+                      <div className="flex flex-col items-center gap-1">
+                        {editingQtyId === item.productId ? (
+                          <Input
+                            autoFocus
+                            type="text"
+                            inputMode="numeric"
+                            value={editingQtyValue}
+                            onChange={(e) =>
+                              setEditingQtyValue(e.target.value.replace(/[^0-9]/g, ''))
+                            }
+                            onBlur={() => setQuantityExact(item.productId, editingQtyValue)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') setQuantityExact(item.productId, editingQtyValue)
+                              if (e.key === 'Escape') {
+                                setEditingQtyId(null)
+                                setEditingQtyValue('')
+                              }
+                            }}
+                            className="h-7 w-12 text-center px-1"
+                          />
+                        ) : (
+                          <span className="w-12 text-center font-medium">{item.quantity}</span>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5"
+                          onClick={() => {
+                            setEditingQtyId(item.productId)
+                            setEditingQtyValue(String(item.quantity))
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </div>
                       <Button
                         variant="outline"
                         size="icon"
