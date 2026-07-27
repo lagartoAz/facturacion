@@ -203,6 +203,24 @@ export default function PosPage(): JSX.Element {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isStandaloneWindow])
 
+  // Pressing Space always focuses the barcode input (unless already typing in a field)
+  useEffect(() => {
+    const handleGlobalSpace = (e: KeyboardEvent): void => {
+      if (e.code !== 'Space' && e.key !== ' ') return
+      const target = e.target as HTMLElement
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      ) return
+      e.preventDefault()
+      barcodeInputRef.current?.focus()
+    }
+    document.addEventListener('keydown', handleGlobalSpace)
+    return () => document.removeEventListener('keydown', handleGlobalSpace)
+  }, [])
+
   async function loadInitialData(): Promise<void> {
     const [ratesData, customersData, pendingCartsData, settings] = await Promise.all([
       window.api.getExchangeRates(),
