@@ -38,5 +38,5 @@ nsis:
     - es_ES
     - en_US
 portable:
-  artifactName: FacturacionAcceso-portable-${version}.exe
+  artifactName: FacturacionAcceso-USB-${version}.exe
   requestExecutionLevel: user
