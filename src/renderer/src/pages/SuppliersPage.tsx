@@ -10,7 +10,9 @@ import {
   DialogTitle,
   DialogFooter
 } from '@/components/ui/dialog'
-import { Plus, Search, Pencil, Trash2, Truck } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Truck, PackagePlus, History } from 'lucide-react'
+import PurchaseDialog from '@/components/suppliers/PurchaseDialog'
+import PurchaseHistoryDialog from '@/components/suppliers/PurchaseHistoryDialog'
 
 interface Supplier {
   id: number
@@ -39,6 +41,8 @@ export default function SuppliersPage(): JSX.Element {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [notification, setNotification] = useState('')
+  const [purchaseSupplier, setPurchaseSupplier] = useState<Supplier | null>(null)
+  const [historySupplier, setHistorySupplier] = useState<Supplier | null>(null)
 
   const loadSuppliers = useCallback(async () => {
     setSuppliers(await window.api.getSuppliers(search || undefined))
@@ -160,7 +164,15 @@ export default function SuppliersPage(): JSX.Element {
                     {s.product_count} {s.product_count === 1 ? 'producto' : 'productos'}
                   </Badge>
                 </td>
-                <td className="p-3 text-center space-x-1">
+                <td className="p-3 text-center whitespace-nowrap space-x-1">
+                  <Button variant="outline" size="sm" onClick={() => setPurchaseSupplier(s)} title="Registrar ingreso de productos">
+                    <PackagePlus className="mr-1 h-4 w-4" />
+                    Factura nueva
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setHistorySupplier(s)} title="Ver historial de ingresos">
+                    <History className="mr-1 h-4 w-4" />
+                    Historial
+                  </Button>
                   <Button variant="ghost" size="icon" onClick={() => openEdit(s)} title="Editar">
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -248,6 +260,23 @@ export default function SuppliersPage(): JSX.Element {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PurchaseDialog
+        open={purchaseSupplier !== null}
+        onOpenChange={(o) => !o && setPurchaseSupplier(null)}
+        supplier={purchaseSupplier}
+        onSaved={(msg) => {
+          showNotification(msg)
+          setPurchaseSupplier(null)
+          loadSuppliers()
+        }}
+      />
+
+      <PurchaseHistoryDialog
+        open={historySupplier !== null}
+        onOpenChange={(o) => !o && setHistorySupplier(null)}
+        supplier={historySupplier}
+      />
 
       {notification && (
         <div className="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-md shadow-lg">

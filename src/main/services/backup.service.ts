@@ -11,6 +11,7 @@ let instance: BackupService | null = null
 export class BackupService {
   private backupDir: string
   private debounceTimer: NodeJS.Timeout | null = null
+  private periodicTimer: NodeJS.Timeout | null = null
   private running = false
   private pending = false
 
@@ -39,6 +40,25 @@ export class BackupService {
       this.debounceTimer = null
       void this.runBackup()
     }, DEBOUNCE_MS)
+  }
+
+  // Time-based safety net: a full backup every `intervalMs` (default 1 hour),
+  // independent of user activity. Complements the write-triggered schedule().
+  startPeriodic(intervalMs = 60 * 60 * 1000): void {
+    if (this.periodicTimer) return
+    this.periodicTimer = setInterval(() => {
+      void this.runBackup()
+    }, intervalMs)
+    // Node keeps the process alive for pending timers; we don't want a backup
+    // timer to be the reason the app stays up.
+    this.periodicTimer.unref?.()
+  }
+
+  stopPeriodic(): void {
+    if (this.periodicTimer) {
+      clearInterval(this.periodicTimer)
+      this.periodicTimer = null
+    }
   }
 
   private async runBackup(): Promise<void> {

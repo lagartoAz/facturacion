@@ -1,7 +1,10 @@
 node_modules/
 out/
 dist/
+dist-client/
 *.db
+*.ORIGINAL_BACKUP
+*.recovered.sql
 *.db-journal
 *.db-wal
 *.db-shm

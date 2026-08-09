@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Save, Clock, ShieldCheck, FolderOpen, HardDrive, Usb, FileSpreadsheet, Package, FileText, Upload, AlertTriangle, Database, MoveRight, Printer, RefreshCw, Keyboard, X } from 'lucide-react'
+import { Save, Clock, ShieldCheck, FolderOpen, HardDrive, Usb, FileSpreadsheet, Package, FileText, Upload, AlertTriangle, Database, MoveRight, Printer, RefreshCw, Keyboard, X, RotateCcw, Network, Server } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,19 @@ interface DbInfo {
   isDefault: boolean
 }
 
+interface NetworkInfo {
+  role: 'server' | 'client'
+  serverEnabled: boolean
+  serverPort: number
+  token: string
+  serverHost: string
+  running: boolean
+  runningPort: number
+  addresses: string[]
+  version: string
+  connected?: boolean
+}
+
 interface PrinterEntry {
   name: string
   displayName: string
@@ -52,7 +65,7 @@ const SHORTCUT_DEFS = [
   { key: 'shortcut_nav_reports',   label: 'Ir a Reportes',                             defaultKey: '' },
 ]
 
-const APP_VERSION = '1.10.1'
+const APP_VERSION = '1.11.0'
 
 export default function SettingsPage(): JSX.Element {
   const [rateVes, setRateVes] = useState('')
@@ -80,6 +93,13 @@ export default function SettingsPage(): JSX.Element {
   const [dbInfo, setDbInfo] = useState<DbInfo | null>(null)
   const [movingDb, setMovingDb] = useState(false)
   const [dbMessage, setDbMessage] = useState('')
+  const [netInfo, setNetInfo] = useState<NetworkInfo | null>(null)
+  const [netPort, setNetPort] = useState('47600')
+  const [netToken, setNetToken] = useState('')
+  const [netHost, setNetHost] = useState('')
+  const [netEnabled, setNetEnabled] = useState(true)
+  const [netMsg, setNetMsg] = useState('')
+  const [savingNet, setSavingNet] = useState(false)
   const [printers, setPrinters] = useState<PrinterEntry[]>([])
   const [defaultPrinter, setDefaultPrinter] = useState('')
   const [loadingPrinters, setLoadingPrinters] = useState(false)
@@ -95,11 +115,16 @@ export default function SettingsPage(): JSX.Element {
 
   useEffect(() => {
     loadSettings()
-    loadBackups()
     loadUsbStatus()
-    loadDbInfo()
     loadPrinters()
     loadPrinterConfig()
+    // Backups and DB location only exist on the server; skip them on a client.
+    loadNetInfo().then((i) => {
+      if (i?.role !== 'client') {
+        loadBackups()
+        loadDbInfo()
+      }
+    })
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     const usbTimer = setInterval(loadUsbStatus, 5000)
     return () => {
@@ -200,6 +225,49 @@ export default function SettingsPage(): JSX.Element {
     setDbInfo(await window.api.getDbInfo())
   }
 
+  async function loadNetInfo(): Promise<NetworkInfo> {
+    const i = (await window.api.getNetworkInfo()) as NetworkInfo
+    setNetInfo(i)
+    setNetPort(String(i.serverPort))
+    setNetToken(i.token)
+    setNetHost(i.serverHost)
+    setNetEnabled(i.serverEnabled)
+    return i
+  }
+
+  async function reconnectClient(): Promise<void> {
+    setSavingNet(true)
+    setNetMsg('')
+    try {
+      const res = await window.api.clientConnect(netHost.trim(), netToken)
+      setNetMsg(res.ok ? 'Conectado al servidor' : `Error: ${res.error ?? 'no se pudo conectar'}`)
+      if (res.ok) await loadNetInfo()
+    } finally {
+      setSavingNet(false)
+      setTimeout(() => setNetMsg(''), 6000)
+    }
+  }
+
+  async function saveNet(): Promise<void> {
+    setSavingNet(true)
+    setNetMsg('')
+    try {
+      const port = parseInt(netPort)
+      const res = (await window.api.setServerConfig({
+        serverEnabled: netEnabled,
+        serverPort: port >= 1024 && port <= 65535 ? port : 47600,
+        token: netToken.trim()
+      })) as { info: NetworkInfo; error?: string }
+      setNetInfo(res.info)
+      setNetPort(String(res.info.serverPort))
+      setNetEnabled(res.info.serverEnabled)
+      setNetMsg(res.error ? `Error: ${res.error}` : 'Configuracion de red guardada')
+    } finally {
+      setSavingNet(false)
+      setTimeout(() => setNetMsg(''), 6000)
+    }
+  }
+
   async function handleChangeDbLocation(): Promise<void> {
     if (
       !confirm(
@@ -263,6 +331,24 @@ export default function SettingsPage(): JSX.Element {
     } finally {
       setBackingUp(false)
     }
+  }
+
+  async function handleRestore(b: BackupEntry): Promise<void> {
+    const when = format(new Date(b.createdAt), 'dd/MM/yyyy HH:mm:ss')
+    if (
+      !confirm(
+        `Vas a restaurar el respaldo del ${when}.\n\n` +
+          `La base de datos actual sera reemplazada por esta copia (los cambios hechos despues de esa fecha se perderan). ` +
+          `La base actual se guardara aparte por si acaso, y la aplicacion se reiniciara.\n\n¿Continuar?`
+      )
+    ) {
+      return
+    }
+    const result = await window.api.restoreBackup(b.path)
+    if (result && !result.success) {
+      alert(`No se pudo restaurar: ${result.error ?? 'error desconocido'}`)
+    }
+    // On success the main process relaunches the app, so nothing else to do here.
   }
 
   function formatSize(bytes: number): string {
@@ -605,6 +691,7 @@ export default function SettingsPage(): JSX.Element {
         </CardContent>
       </Card>
 
+      {netInfo?.role !== 'client' && (
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -667,6 +754,7 @@ export default function SettingsPage(): JSX.Element {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Import Confirm Dialog */}
       <Dialog open={importConfirmOpen} onOpenChange={setImportConfirmOpen}>
@@ -754,6 +842,147 @@ export default function SettingsPage(): JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
+            <Network className="h-5 w-5" />
+            Red / Multi-terminal
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {netInfo?.role === 'server' ? (
+            <>
+              <div className="flex items-center gap-2">
+                <Server className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Este equipo es el SERVIDOR (base de datos principal)</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${
+                    netInfo.running ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                />
+                {netInfo.running
+                  ? `Servidor activo, escuchando en el puerto ${netInfo.runningPort}`
+                  : netEnabled
+                    ? 'Servidor detenido (revisa el puerto o el firewall)'
+                    : 'Servidor desactivado'}
+              </div>
+
+              {netInfo.running && netInfo.addresses.length > 0 && (
+                <div className="rounded-md border p-3 bg-muted/30 space-y-1">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Direcciones para las terminales de acceso
+                  </p>
+                  {netInfo.addresses.map((addr) => (
+                    <p key={addr} className="font-mono text-sm">
+                      {addr}:{netInfo.runningPort}
+                    </p>
+                  ))}
+                  <p className="text-xs text-muted-foreground pt-1">
+                    En cada terminal de acceso escribe una de estas direcciones. Ideal fijar la IP de este PC en el router.
+                  </p>
+                </div>
+              )}
+
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={netEnabled}
+                  onChange={(e) => setNetEnabled(e.target.checked)}
+                />
+                Compartir la base de datos con otras terminales en esta red
+              </label>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">Puerto</Label>
+                  <Input
+                    type="number"
+                    value={netPort}
+                    onChange={(e) => setNetPort(e.target.value)}
+                    placeholder="47600"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Clave de acceso</Label>
+                  <Input
+                    value={netToken}
+                    onChange={(e) => setNetToken(e.target.value)}
+                    placeholder="La escribiran las terminales al conectar"
+                  />
+                </div>
+              </div>
+
+              <Button onClick={saveNet} size="sm" disabled={savingNet}>
+                <Save className="mr-2 h-4 w-4" />
+                {savingNet ? 'Aplicando...' : 'Guardar y aplicar'}
+              </Button>
+
+              <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-md text-xs space-y-1">
+                <p className="font-medium text-amber-600 dark:text-amber-400">
+                  Para que las terminales conecten, permite el puerto en el Firewall de Windows.
+                </p>
+                <p className="text-muted-foreground break-all">
+                  Ejecuta una vez (CMD como administrador):
+                </p>
+                <p className="font-mono break-all">
+                  netsh advfirewall firewall add rule name=&quot;Facturacion POS&quot; dir=in action=allow protocol=TCP localport={netPort}
+                </p>
+              </div>
+              {netMsg && (
+                <p className="text-xs text-muted-foreground break-all border-t pt-2">{netMsg}</p>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-sm">
+                <span
+                  className={`inline-block h-2 w-2 rounded-full ${
+                    netInfo?.connected ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                />
+                {netInfo?.connected
+                  ? `Conectado al servidor ${netInfo.serverHost}`
+                  : 'Sin conexion con el servidor'}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Esta es una <strong>terminal de acceso</strong>: usa la base de datos del servidor
+                principal por la red. Si cambia la IP del servidor o la clave, actualizalas aqui.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs">IP del servidor</Label>
+                  <Input
+                    value={netHost}
+                    onChange={(e) => setNetHost(e.target.value)}
+                    placeholder="Ej: 192.168.1.50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Clave de acceso</Label>
+                  <Input
+                    type="password"
+                    value={netToken}
+                    onChange={(e) => setNetToken(e.target.value)}
+                    placeholder="La misma del servidor"
+                  />
+                </div>
+              </div>
+              <Button onClick={reconnectClient} size="sm" disabled={savingNet}>
+                <Network className="mr-2 h-4 w-4" />
+                {savingNet ? 'Conectando...' : 'Reconectar'}
+              </Button>
+              {netMsg && (
+                <p className="text-xs text-muted-foreground break-all border-t pt-2">{netMsg}</p>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {netInfo?.role !== 'client' && (
+      <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
             <Database className="h-5 w-5" />
             Ubicacion de la Base de Datos
           </CardTitle>
@@ -824,8 +1053,9 @@ export default function SettingsPage(): JSX.Element {
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Cada venta y cambio de inventario genera un respaldo automatico (se conservan los ultimos 50).
-            Si se va la luz o el sistema falla, puedes restaurar copiando uno de estos archivos sobre el original.
+            Cada venta y cambio de inventario genera un respaldo automatico, ademas de uno cada hora (se conservan los ultimos 50).
+            Si se va la luz o el sistema falla, la app restaura sola el ultimo respaldo valido al iniciar. Tambien puedes
+            restaurar manualmente cualquiera de la lista con el boton &quot;Restaurar&quot;.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button onClick={handleBackupNow} size="sm" disabled={backingUp}>
@@ -848,9 +1078,21 @@ export default function SettingsPage(): JSX.Element {
               <p className="text-sm text-muted-foreground">No hay respaldos aun.</p>
             ) : (
               backups.slice(0, 10).map((b) => (
-                <div key={b.path} className="flex justify-between items-center text-xs py-1 border-b last:border-0">
+                <div key={b.path} className="flex justify-between items-center gap-2 text-xs py-1 border-b last:border-0">
                   <span className="font-mono">{format(new Date(b.createdAt), 'dd/MM/yyyy HH:mm:ss')}</span>
-                  <span className="text-muted-foreground">{formatSize(b.size)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">{formatSize(b.size)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => handleRestore(b)}
+                      title="Restaurar este respaldo"
+                    >
+                      <RotateCcw className="mr-1 h-3 w-3" />
+                      Restaurar
+                    </Button>
+                  </div>
                 </div>
               ))
             )}
@@ -862,6 +1104,8 @@ export default function SettingsPage(): JSX.Element {
           </div>
         </CardContent>
       </Card>
+      </>
+      )}
 
       {usbStatus?.portable && (
         <Card>

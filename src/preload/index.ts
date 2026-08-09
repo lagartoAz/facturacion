@@ -60,6 +60,16 @@ const api = {
   deleteSupplier: (id: number) =>
     ipcRenderer.invoke('suppliers:delete', id),
 
+  // Purchases (facturas de ingreso / reabastecimiento de proveedor)
+  getSupplierProducts: (supplierId: number) =>
+    ipcRenderer.invoke('purchases:supplierProducts', supplierId),
+  createPurchase: (data: Record<string, unknown>) =>
+    ipcRenderer.invoke('purchases:create', data),
+  getSupplierPurchases: (supplierId: number) =>
+    ipcRenderer.invoke('purchases:bySupplier', supplierId),
+  getPurchaseById: (id: number) =>
+    ipcRenderer.invoke('purchases:getById', id),
+
   // Invoices
   createInvoice: (data: Record<string, unknown>) =>
     ipcRenderer.invoke('invoices:create', data),
@@ -143,9 +153,20 @@ const api = {
   listBackups: () => ipcRenderer.invoke('backup:list'),
   openBackupFolder: () => ipcRenderer.invoke('backup:openFolder'),
   getBackupDir: () => ipcRenderer.invoke('backup:getDir'),
+  restoreBackup: (backupPath: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('backup:restore', backupPath),
 
   // USB license
   getUsbStatus: () => ipcRenderer.invoke('usb:getStatus'),
+
+  // Network / multi-terminal
+  getNetworkInfo: () => ipcRenderer.invoke('net:getInfo'),
+  setServerConfig: (patch: Record<string, unknown>) =>
+    ipcRenderer.invoke('net:setServerConfig', patch),
+  clientConnect: (host: string, token: string, port?: number): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('net:clientConnect', host, token, port),
+  clientStatus: (): Promise<{ connected: boolean }> =>
+    ipcRenderer.invoke('net:clientStatus'),
 
   // Export
   exportInventory: (): Promise<string | null> => ipcRenderer.invoke('export:inventory'),

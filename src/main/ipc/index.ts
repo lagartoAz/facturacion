@@ -13,6 +13,8 @@ import { registerQuoteHandlers } from './quotes.ipc'
 import { registerDbLocationHandlers } from './db-location.ipc'
 import { registerPrinterHandlers } from './printer.ipc'
 import { registerSupplierHandlers } from './suppliers.ipc'
+import { registerPurchaseHandlers } from './purchases.ipc'
+import { registerNetworkHandlers } from './network.ipc'
 
 export function registerAllHandlers(db: Database.Database): void {
   registerProductHandlers(db)
@@ -29,4 +31,6 @@ export function registerAllHandlers(db: Database.Database): void {
   registerDbLocationHandlers()
   registerPrinterHandlers(db)
   registerSupplierHandlers(db)
+  registerPurchaseHandlers(db)
+  registerNetworkHandlers()
 }

@@ -37,6 +37,24 @@ export function registerPrinterHandlers(db: Database.Database): void {
       _event,
       html: string
     ): Promise<{ success: boolean; error?: string }> => {
+      // Warn clearly if there is no printer installed, so printing an invoice
+      // doesn't silently do nothing.
+      const listWin = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+      if (listWin) {
+        try {
+          const printers = await listWin.webContents.getPrintersAsync()
+          if (printers.length === 0) {
+            return {
+              success: false,
+              error:
+                'No hay ninguna impresora instalada en este equipo. Conecta o instala una impresora en Windows para imprimir facturas.'
+            }
+          }
+        } catch {
+          // ignore and try to print anyway
+        }
+      }
+
       const defaultPrinter = settings.get('default_printer')
       const silent = settings.get('print_silent') === '1'
 

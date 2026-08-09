@@ -313,4 +313,35 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 16')
   }
+
+  if (version < 17) {
+    // Purchase (restock) invoices: an incoming shipment from a supplier that
+    // adds stock to the inventory. Kept separate from sales `invoices`.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS purchases (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_id   INTEGER REFERENCES suppliers(id) ON DELETE SET NULL,
+        supplier_name TEXT,
+        reference     TEXT,
+        notes         TEXT,
+        total_cost    REAL NOT NULL DEFAULT 0,
+        total_items   REAL NOT NULL DEFAULT 0,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchases(supplier_id);
+      CREATE INDEX IF NOT EXISTS idx_purchases_date ON purchases(created_at);
+
+      CREATE TABLE IF NOT EXISTS purchase_items (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        purchase_id  INTEGER NOT NULL REFERENCES purchases(id) ON DELETE CASCADE,
+        product_id   INTEGER REFERENCES products(id) ON DELETE SET NULL,
+        product_name TEXT NOT NULL,
+        quantity     REAL NOT NULL,
+        unit_cost    REAL NOT NULL DEFAULT 0,
+        subtotal     REAL NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase ON purchase_items(purchase_id);
+    `)
+    db.pragma('user_version = 17')
+  }
 }

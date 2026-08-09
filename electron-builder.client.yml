@@ -1,0 +1,39 @@
+# Build config for the CLIENT ("Acceso") executable. It packages the same code
+# built with APP_ROLE=client, which connects to the primary/server PC over the
+# LAN instead of opening a local database.
+# Build with:  npm run dist:client
+appId: com.facturacion.acceso
+productName: Facturacion Acceso
+directories:
+  buildResources: resources
+  output: dist-client
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{tailwind.config.*,postcss.config.*}'
+asarUnpack:
+  - resources/**
+  - node_modules/better-sqlite3/**
+win:
+  target:
+    - nsis
+    - portable
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  runAfterFinish: true
+  shortcutName: Facturacion Acceso
+  installerLanguages:
+    - es_ES
+    - en_US
+portable:
+  artifactName: FacturacionAcceso-portable-${version}.exe
+  requestExecutionLevel: user
