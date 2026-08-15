@@ -15,6 +15,7 @@ export const PROXIED_CHANNELS: string[] = [
   'products:toggleActive',
   'products:delete',
   'products:saveImage',
+  'products:getImage',
   'products:removeImage',
   'products:getImagesDir',
   'categories:getAll',

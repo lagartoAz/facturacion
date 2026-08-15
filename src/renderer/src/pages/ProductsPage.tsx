@@ -12,7 +12,9 @@ import {
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
 import { formatUSD } from '@/lib/currency'
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, Package, BarChart3, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ProductThumb } from '@/components/ProductThumb'
+import { getProductImageUrl, invalidateProductImage, prepareProductImage } from '@/lib/product-image'
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, BarChart3, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -37,7 +39,7 @@ interface Product {
   min_stock: number
   is_active: number
   is_by_weight: number
-  image_path: string | null
+  has_image: number
 }
 
 interface Category {
@@ -94,6 +96,9 @@ export default function ProductsPage(): JSX.Element {
   const [statsProduct, setStatsProduct] = useState<Product | null>(null)
   const [stats, setStats] = useState<ProductStats | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Bumped every time the photo of the open dialog changes, so a photo still
+  // loading from the database can't overwrite a newer choice.
+  const imageSessionRef = useRef(0)
 
   const loadProducts = useCallback(async () => {
     const baseFilters = { search: search || undefined, active_only: false }
@@ -126,6 +131,7 @@ export default function ProductsPage(): JSX.Element {
   }, [loadProducts, loadCategories, loadSuppliers])
 
   function openNewDialog(): void {
+    imageSessionRef.current++
     setEditingId(null)
     setForm(emptyForm)
     setImagePreview(null)
@@ -135,7 +141,7 @@ export default function ProductsPage(): JSX.Element {
     setDialogOpen(true)
   }
 
-  function openEditDialog(p: Product): void {
+  async function openEditDialog(p: Product): Promise<void> {
     setEditingId(p.id)
     setForm({
       barcode: p.barcode || '',
@@ -149,32 +155,36 @@ export default function ProductsPage(): JSX.Element {
       min_stock: String(p.min_stock),
       is_by_weight: !!p.is_by_weight
     })
-    setExistingImagePath(p.image_path)
-    setImagePreview(p.image_path ? `file://${p.image_path}` : null)
+    setExistingImagePath(p.has_image ? String(p.id) : null)
     setImageFile(null)
     setRemoveImage(false)
+    setImagePreview(null)
     setDialogOpen(true)
+    if (p.has_image) {
+      // The photo comes from the database (possibly over the LAN), so it arrives
+      // after the dialog opens. Drop it if the user meanwhile picked another
+      // photo, removed it, or opened a different product.
+      const session = ++imageSessionRef.current
+      const url = await getProductImageUrl(p.id)
+      if (imageSessionRef.current === session) setImagePreview(url)
+    }
   }
 
-  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>): void {
+  async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = e.target.files?.[0]
-    if (!file) return
-
-    const extension = file.name.split('.').pop()?.toLowerCase() || 'png'
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = reader.result as string
-      setImagePreview(dataUrl)
-      setImageFile({ data: dataUrl, extension })
-      setRemoveImage(false)
-    }
-    reader.readAsDataURL(file)
-
     // Reset file input so the same file can be selected again
     e.target.value = ''
+    if (!file) return
+
+    imageSessionRef.current++
+    const picked = await prepareProductImage(file)
+    setImagePreview(picked.data)
+    setImageFile(picked)
+    setRemoveImage(false)
   }
 
   function handleRemoveImage(): void {
+    imageSessionRef.current++
     setImagePreview(null)
     setImageFile(null)
     setRemoveImage(true)
@@ -207,8 +217,10 @@ export default function ProductsPage(): JSX.Element {
     // Handle image
     if (imageFile) {
       await window.api.saveProductImage(productId, imageFile.data, imageFile.extension)
+      invalidateProductImage(productId)
     } else if (removeImage && existingImagePath) {
       await window.api.removeProductImage(productId)
+      invalidateProductImage(productId)
     }
 
     setDialogOpen(false)
@@ -301,17 +313,7 @@ export default function ProductsPage(): JSX.Element {
             {products.map((p) => (
               <tr key={p.id} className="border-t hover:bg-muted/30">
                 <td className="p-2">
-                  {p.image_path ? (
-                    <img
-                      src={`file://${p.image_path}`}
-                      alt={p.name}
-                      className="h-8 w-8 rounded object-cover"
-                    />
-                  ) : (
-                    <div className="h-8 w-8 rounded bg-muted flex items-center justify-center">
-                      <Package className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  )}
+                  <ProductThumb productId={p.id} hasImage={!!p.has_image} name={p.name} />
                 </td>
                 <td className="p-3 font-mono text-xs">{p.barcode || '-'}</td>
                 <td className="p-3">{p.name}</td>
@@ -586,17 +588,13 @@ export default function ProductsPage(): JSX.Element {
             <div className="space-y-4">
               {/* Product info */}
               <div className="flex items-center gap-3">
-                {statsProduct.image_path ? (
-                  <img
-                    src={`file://${statsProduct.image_path}`}
-                    alt={statsProduct.name}
-                    className="h-12 w-12 rounded object-cover"
-                  />
-                ) : (
-                  <div className="h-12 w-12 rounded bg-muted flex items-center justify-center">
-                    <Package className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                )}
+                <ProductThumb
+                  productId={statsProduct.id}
+                  hasImage={!!statsProduct.has_image}
+                  name={statsProduct.name}
+                  className="h-12 w-12"
+                  iconClassName="h-6 w-6"
+                />
                 <div>
                   <p className="font-medium">{statsProduct.name}</p>
                   <p className="text-sm text-muted-foreground">

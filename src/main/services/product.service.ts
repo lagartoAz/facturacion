@@ -1,7 +1,15 @@
 import type Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'path'
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
+import { existsSync, unlinkSync } from 'fs'
+import { mimeFromDataUrl, mimeFromExtension } from '../shared/image-mime'
+
+// Explicit column list instead of `p.*`: the photo blob must never travel with
+// a product listing (it would be copied into every row and, on a terminal, sent
+// over the LAN). `has_image` tells the UI whether to request the photo.
+const PRODUCT_FIELDS = `p.id, p.barcode, p.name, p.description, p.price_usd, p.cost_usd,
+         p.category_id, p.supplier_id, p.stock, p.min_stock, p.is_active, p.is_by_weight,
+         p.created_at, p.updated_at, (p.image_blob IS NOT NULL) AS has_image`
 
 export interface Product {
   id: number
@@ -18,9 +26,14 @@ export interface Product {
   min_stock: number
   is_active: number
   is_by_weight: number
-  image_path: string | null
+  has_image: number
   created_at: string
   updated_at: string
+}
+
+export interface ProductImage {
+  mime: string
+  data: string
 }
 
 export interface CreateProductDTO {
@@ -51,7 +64,7 @@ export class ProductService {
 
   getAll(filters?: ProductFilters): Product[] {
     let query = `
-      SELECT p.*, c.name as category_name, s.name as supplier_name
+      SELECT ${PRODUCT_FIELDS}, c.name as category_name, s.name as supplier_name
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       LEFT JOIN suppliers s ON p.supplier_id = s.id
@@ -114,7 +127,7 @@ export class ProductService {
   getByBarcode(barcode: string): Product | undefined {
     return this.db
       .prepare(
-        `SELECT p.*, c.name as category_name, s.name as supplier_name
+        `SELECT ${PRODUCT_FIELDS}, c.name as category_name, s.name as supplier_name
          FROM products p
          LEFT JOIN categories c ON p.category_id = c.id
          LEFT JOIN suppliers s ON p.supplier_id = s.id
@@ -127,7 +140,7 @@ export class ProductService {
     const s = `%${query}%`
     return this.db
       .prepare(
-        `SELECT p.*, c.name as category_name, s.name as supplier_name
+        `SELECT ${PRODUCT_FIELDS}, c.name as category_name, s.name as supplier_name
          FROM products p
          LEFT JOIN categories c ON p.category_id = c.id
          LEFT JOIN suppliers s ON p.supplier_id = s.id
@@ -156,7 +169,7 @@ export class ProductService {
         data.is_by_weight ?? 0
       )
     return this.db
-      .prepare(`SELECT p.*, c.name as category_name, s.name as supplier_name
+      .prepare(`SELECT ${PRODUCT_FIELDS}, c.name as category_name, s.name as supplier_name
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.id
                 LEFT JOIN suppliers s ON p.supplier_id = s.id
@@ -186,7 +199,7 @@ export class ProductService {
     }
 
     return this.db
-      .prepare(`SELECT p.*, c.name as category_name, s.name as supplier_name
+      .prepare(`SELECT ${PRODUCT_FIELDS}, c.name as category_name, s.name as supplier_name
                 FROM products p
                 LEFT JOIN categories c ON p.category_id = c.id
                 LEFT JOIN suppliers s ON p.supplier_id = s.id
@@ -223,34 +236,49 @@ export class ProductService {
     return { hardDeleted: true }
   }
 
-  saveImage(productId: number, imageData: string, extension: string): string {
-    const imagesDir = join(app.getPath('userData'), 'product-images')
-    if (!existsSync(imagesDir)) mkdirSync(imagesDir, { recursive: true })
+  // Stores the photo inside the database, so it belongs to the shared inventory:
+  // an access terminal saving a product writes the photo to the primary PC's
+  // database, and every backup/restore of that database carries it along.
+  saveImage(productId: number, imageData: string, extension: string): void {
+    const base64Data = imageData.replace(/^data:[^;,]*;base64,/, '')
+    const mime = mimeFromDataUrl(imageData) ?? mimeFromExtension(extension)
+    this.deleteLegacyFile(productId)
+    this.db
+      .prepare(
+        "UPDATE products SET image_blob = ?, image_mime = ?, image_path = NULL, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(Buffer.from(base64Data, 'base64'), mime, productId)
+  }
 
-    // Remove old image if exists
-    const product = this.db.prepare('SELECT image_path FROM products WHERE id = ?').get(productId) as { image_path: string | null } | undefined
-    if (product?.image_path && existsSync(product.image_path)) {
-      try { unlinkSync(product.image_path) } catch { /* ignore */ }
+  getImage(productId: number): ProductImage | null {
+    const row = this.db
+      .prepare('SELECT image_blob, image_mime FROM products WHERE id = ?')
+      .get(productId) as { image_blob: Buffer | null; image_mime: string | null } | undefined
+    if (!row?.image_blob) return null
+    return {
+      mime: row.image_mime || 'image/png',
+      data: Buffer.from(row.image_blob).toString('base64')
     }
-
-    // Save new image
-    const fileName = `product_${productId}_${Date.now()}.${extension}`
-    const filePath = join(imagesDir, fileName)
-    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '')
-    writeFileSync(filePath, Buffer.from(base64Data, 'base64'))
-
-    // Update DB
-    this.db.prepare("UPDATE products SET image_path = ?, updated_at = datetime('now') WHERE id = ?").run(filePath, productId)
-
-    return filePath
   }
 
   removeImage(productId: number): void {
-    const product = this.db.prepare('SELECT image_path FROM products WHERE id = ?').get(productId) as { image_path: string | null } | undefined
+    this.deleteLegacyFile(productId)
+    this.db
+      .prepare(
+        "UPDATE products SET image_blob = NULL, image_mime = NULL, image_path = NULL, updated_at = datetime('now') WHERE id = ?"
+      )
+      .run(productId)
+  }
+
+  // Photos saved before v1.12 also left a file under userData; drop it when the
+  // product's photo is replaced or removed so those files don't pile up.
+  private deleteLegacyFile(productId: number): void {
+    const product = this.db
+      .prepare('SELECT image_path FROM products WHERE id = ?')
+      .get(productId) as { image_path: string | null } | undefined
     if (product?.image_path && existsSync(product.image_path)) {
       try { unlinkSync(product.image_path) } catch { /* ignore */ }
     }
-    this.db.prepare("UPDATE products SET image_path = NULL, updated_at = datetime('now') WHERE id = ?").run(productId)
   }
 
   getImagesDir(): string {

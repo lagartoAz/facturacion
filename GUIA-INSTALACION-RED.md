@@ -105,5 +105,7 @@ Cada terminal imprime con su propia impresora:
 
 - **El servidor debe estar encendido** para que las terminales funcionen. Si se apaga, las terminales no pueden vender hasta que vuelva.
 - Los **respaldos** siguen siendo automáticos en el servidor (cada cambio + cada hora, últimos 50) y, si algo se daña, se restaura solo al iniciar.
-- Las **fotos de productos** se ven en el servidor; en las terminales puede que no se muestre la imagen (todo lo demás funciona igual).
+- Las **fotos de productos** se guardan dentro de la base de datos del servidor. Se pueden
+  agregar y ver desde cualquier terminal de acceso (incluida la versión USB), y viajan con
+  los respaldos: al restaurar la base en otro equipo las fotos siguen ahí.
 - Recomendado: deja la base de datos del servidor en el **disco interno** (no en USB) y usa el USB solo para respaldos.

@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3'
+import { existsSync, readFileSync } from 'fs'
+import { mimeFromPath } from '../shared/image-mime'
 
 export function runMigrations(db: Database.Database): void {
   const version = db.pragma('user_version', { simple: true }) as number
@@ -343,5 +345,30 @@ export function runMigrations(db: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase ON purchase_items(purchase_id);
     `)
     db.pragma('user_version = 17')
+  }
+
+  if (version < 18) {
+    // Product photos move INTO the database. They used to live as loose files
+    // under userData with only their absolute path in `image_path`, which meant
+    // an access terminal ("Acceso"/USB) could never show them, and a database
+    // restored on another PC lost every photo. Existing files are imported once;
+    // from here on the blob in the DB is the only copy that matters.
+    db.exec(`
+      ALTER TABLE products ADD COLUMN image_blob BLOB;
+      ALTER TABLE products ADD COLUMN image_mime TEXT;
+    `)
+    const rows = db
+      .prepare("SELECT id, image_path FROM products WHERE image_path IS NOT NULL AND image_path <> ''")
+      .all() as { id: number; image_path: string }[]
+    const update = db.prepare('UPDATE products SET image_blob = ?, image_mime = ? WHERE id = ?')
+    for (const row of rows) {
+      try {
+        if (!existsSync(row.image_path)) continue
+        update.run(readFileSync(row.image_path), mimeFromPath(row.image_path), row.id)
+      } catch {
+        // An unreadable photo must not stop the migration.
+      }
+    }
+    db.pragma('user_version = 18')
   }
 }

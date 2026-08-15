@@ -22,6 +22,8 @@ const api = {
     ipcRenderer.invoke('products:delete', id),
   saveProductImage: (productId: number, imageData: string, extension: string) =>
     ipcRenderer.invoke('products:saveImage', productId, imageData, extension),
+  getProductImage: (productId: number): Promise<{ mime: string; data: string } | null> =>
+    ipcRenderer.invoke('products:getImage', productId),
   removeProductImage: (productId: number) =>
     ipcRenderer.invoke('products:removeImage', productId),
 

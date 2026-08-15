@@ -51,11 +51,17 @@ export function registerProductHandlers(db: Database.Database): void {
   })
 
   ipcMain.handle('products:saveImage', (_event, productId: number, imageData: string, extension: string) => {
-    return service.saveImage(productId, imageData, extension)
+    service.saveImage(productId, imageData, extension)
+    getBackupService().schedule()
+  })
+
+  ipcMain.handle('products:getImage', (_event, productId: number) => {
+    return service.getImage(productId)
   })
 
   ipcMain.handle('products:removeImage', (_event, productId: number) => {
     service.removeImage(productId)
+    getBackupService().schedule()
   })
 
   ipcMain.handle('products:getImagesDir', () => {

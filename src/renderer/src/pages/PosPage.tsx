@@ -14,6 +14,7 @@ import {
   DialogFooter
 } from '@/components/ui/dialog'
 import { useBarcode } from '@/hooks/use-barcode'
+import { ProductThumb } from '@/components/ProductThumb'
 import {
   formatUSD,
   formatVES,
@@ -33,7 +34,6 @@ import {
   DollarSign,
   CreditCard,
   ArrowRightLeft,
-  Package,
   Printer,
   CheckCircle2,
   UserCheck,
@@ -51,7 +51,7 @@ interface Product {
   name: string
   price_usd: number
   stock: number
-  image_path: string | null
+  has_image: number
   is_by_weight: number
 }
 
@@ -858,17 +858,12 @@ export default function PosPage(): JSX.Element {
                 barcodeInputRef.current?.focus()
               }}
             >
-              {p.image_path ? (
-                <img
-                  src={`file://${p.image_path}`}
-                  alt={p.name}
-                  className="h-8 w-8 rounded object-cover shrink-0"
-                />
-              ) : (
-                <div className="h-8 w-8 rounded bg-muted flex items-center justify-center shrink-0">
-                  <Package className="h-4 w-4 text-muted-foreground" />
-                </div>
-              )}
+              <ProductThumb
+                productId={p.id}
+                hasImage={!!p.has_image}
+                name={p.name}
+                className="shrink-0"
+              />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{p.name}</p>
                 <p className="text-xs text-muted-foreground">
