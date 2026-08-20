@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { MainLayout } from './components/layout/MainLayout'
 import ConnectScreen from './components/ConnectScreen'
+import RoleSelectScreen from './components/RoleSelectScreen'
 import DashboardPage from './pages/DashboardPage'
 import PosPage from './pages/PosPage'
 import ProductsPage from './pages/ProductsPage'
@@ -15,25 +16,33 @@ import SettingsPage from './pages/SettingsPage'
 
 export default function App(): JSX.Element {
   // Gate for client ("Acceso") terminals: they must connect to the server first.
-  // Server/standalone builds skip straight to the app.
-  const [gate, setGate] = useState<'checking' | 'connect' | 'ready'>('checking')
+  // Android devices with no role yet pick one first. Server/standalone builds
+  // (and role:'server' Android devices) skip straight to the app.
+  const [gate, setGate] = useState<'checking' | 'role' | 'connect' | 'ready'>('checking')
   const [serverHost, setServerHost] = useState('')
+
+  async function refreshGate(): Promise<void> {
+    const info = (await window.api.getNetworkInfo()) as {
+      role: string
+      serverHost: string
+      connected?: boolean
+    }
+    if (info.role === 'unselected') {
+      setGate('role')
+      return
+    }
+    if (info.role !== 'client') {
+      setGate('ready')
+      return
+    }
+    setServerHost(info.serverHost || '')
+    setGate(info.connected ? 'ready' : 'connect')
+  }
 
   useEffect(() => {
     let active = true
     ;(async () => {
-      const info = (await window.api.getNetworkInfo()) as {
-        role: string
-        serverHost: string
-        connected?: boolean
-      }
-      if (!active) return
-      if (info.role !== 'client') {
-        setGate('ready')
-        return
-      }
-      setServerHost(info.serverHost || '')
-      setGate(info.connected ? 'ready' : 'connect')
+      await refreshGate().catch(() => active && setGate('ready'))
     })()
     return () => {
       active = false
@@ -41,6 +50,9 @@ export default function App(): JSX.Element {
   }, [])
 
   if (gate === 'checking') return <div className="min-h-screen bg-background" />
+  if (gate === 'role') {
+    return <RoleSelectScreen onDone={() => void refreshGate()} />
+  }
   if (gate === 'connect') {
     return <ConnectScreen initialHost={serverHost} onConnected={() => setGate('ready')} />
   }
