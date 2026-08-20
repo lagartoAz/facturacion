@@ -55,15 +55,67 @@ export function setNetworkConfig(patch: Partial<NetworkConfig>): NetworkConfig {
   return next
 }
 
-// LAN IPv4 addresses of this machine, so the operator can tell the clients which
-// address to connect to.
+// Interface-name fragments that belong to virtual or secondary adapters the
+// access terminals cannot reach over the LAN: VM bridges, Docker, WSL, VPNs and
+// cellular-data interfaces. Matching is case-insensitive substring.
+const VIRTUAL_IFACES = [
+  'vethernet',
+  'virtualbox',
+  'vboxnet',
+  'vmware',
+  'vmnet',
+  'hyper-v',
+  'docker',
+  'br-',
+  'veth',
+  'wsl',
+  'zerotier',
+  'tailscale',
+  'utun',
+  'tun',
+  'tap',
+  'ppp',
+  'rmnet',
+  'ccmni'
+]
+
+function ifaceLooksVirtual(name: string): boolean {
+  const n = name.toLowerCase()
+  return VIRTUAL_IFACES.some((frag) => n.includes(frag))
+}
+
+// Higher score = more likely to be the real LAN address the terminals connect
+// to. Home/office routers almost always hand out 192.168.x; VirtualBox's
+// host-only 192.168.56.x is demoted so it never wins.
+function addressScore(addr: string): number {
+  if (addr.startsWith('192.168.56.')) return 1
+  if (addr.startsWith('192.168.')) return 4
+  if (addr.startsWith('10.')) return 3
+  if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(addr)) return 2
+  return 0
+}
+
+// LAN IPv4 addresses of this machine, so the operator can tell the terminals
+// which address to connect to. Virtual/secondary adapters are dropped (unless
+// they are the only thing available) and the best candidate is returned first,
+// so the UI can present it as the recommended one.
 export function getLanAddresses(): string[] {
-  const out: string[] = []
   const ifaces = networkInterfaces()
+  const candidates: { address: string; virtual: boolean; score: number }[] = []
   for (const name of Object.keys(ifaces)) {
+    const virtual = ifaceLooksVirtual(name)
     for (const info of ifaces[name] ?? []) {
-      if (info.family === 'IPv4' && !info.internal) out.push(info.address)
+      if (info.family !== 'IPv4' || info.internal) continue
+      if (info.address.startsWith('169.254.')) continue // APIPA: no DHCP lease
+      candidates.push({ address: info.address, virtual, score: addressScore(info.address) })
     }
   }
-  return out
+  // Real interfaces before virtual ones; within each group, better range first.
+  candidates.sort((a, b) => {
+    if (a.virtual !== b.virtual) return a.virtual ? 1 : -1
+    return b.score - a.score
+  })
+  const real = candidates.filter((c) => !c.virtual)
+  const chosen = real.length > 0 ? real : candidates
+  return [...new Set(chosen.map((c) => c.address))]
 }

@@ -62,9 +62,14 @@ export default function RoleSelectScreen({ onDone }: Props): JSX.Element {
             </div>
             {addresses.length > 0 ? (
               <ul className="space-y-1">
-                {addresses.map((ip) => (
-                  <li key={ip} className="font-mono text-lg font-semibold">
-                    {ip}:{port}
+                {addresses.map((ip, i) => (
+                  <li key={ip} className="flex items-baseline gap-2">
+                    <span className="font-mono text-lg font-semibold">
+                      {ip}:{port}
+                    </span>
+                    {i === 0 && addresses.length > 1 && (
+                      <span className="text-xs font-medium text-green-600">recomendada</span>
+                    )}
                   </li>
                 ))}
               </ul>

@@ -876,13 +876,22 @@ export default function SettingsPage(): JSX.Element {
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     Direcciones para las terminales de acceso
                   </p>
-                  {netInfo.addresses.map((addr) => (
-                    <p key={addr} className="font-mono text-sm">
-                      {addr}:{netInfo.runningPort}
+                  {netInfo.addresses.map((addr, i) => (
+                    <p key={addr} className="font-mono text-sm flex items-baseline gap-2">
+                      <span>
+                        {addr}:{netInfo.runningPort}
+                      </span>
+                      {i === 0 && netInfo.addresses.length > 1 && (
+                        <span className="text-xs font-sans font-medium text-green-600">
+                          recomendada
+                        </span>
+                      )}
                     </p>
                   ))}
                   <p className="text-xs text-muted-foreground pt-1">
-                    En cada terminal de acceso escribe una de estas direcciones. Ideal fijar la IP de este PC en el router.
+                    {netInfo.addresses.length > 1
+                      ? 'Escribe la direccion recomendada en cada terminal de acceso (debe estar en la misma red WiFi). Ideal fijar la IP de este PC en el router.'
+                      : 'En cada terminal de acceso escribe esta direccion. Ideal fijar la IP de este PC en el router.'}
                   </p>
                 </div>
               )}
