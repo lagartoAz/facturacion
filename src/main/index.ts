@@ -3,6 +3,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import appIcon from '../../resources/icon.png?asset'
 import { initDatabase, closeDatabase } from './database/connection'
 import { runMigrations } from './database/migrations'
 import {
@@ -43,6 +44,7 @@ function createWindow(): void {
     minHeight: 700,
     show: false,
     autoHideMenuBar: true,
+    icon: appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false
@@ -70,6 +72,7 @@ function createPosWindow(): void {
     width: 900,
     height: 700,
     autoHideMenuBar: true,
+    icon: appIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
       sandbox: false

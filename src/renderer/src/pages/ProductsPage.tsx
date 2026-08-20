@@ -13,8 +13,8 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { formatUSD } from '@/lib/currency'
 import { ProductThumb } from '@/components/ProductThumb'
-import { getProductImageUrl, invalidateProductImage, prepareProductImage } from '@/lib/product-image'
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, X, BarChart3, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { getProductImageUrl, invalidateProductImage, prepareProductImage, capturePhoto, isMobileApp } from '@/lib/product-image'
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, Camera, X, BarChart3, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -183,6 +183,15 @@ export default function ProductsPage(): JSX.Element {
     setRemoveImage(false)
   }
 
+  async function handleCapturePhoto(): Promise<void> {
+    const picked = await capturePhoto()
+    if (!picked) return
+    imageSessionRef.current++
+    setImagePreview(picked.data)
+    setImageFile(picked)
+    setRemoveImage(false)
+  }
+
   function handleRemoveImage(): void {
     imageSessionRef.current++
     setImagePreview(null)
@@ -268,7 +277,7 @@ export default function ProductsPage(): JSX.Element {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 landscape:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Productos</h1>
         <Button onClick={openNewDialog}>
@@ -294,7 +303,7 @@ export default function ProductsPage(): JSX.Element {
         </div>
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
+      <div className="border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
@@ -409,15 +418,23 @@ export default function ProductsPage(): JSX.Element {
                   </div>
                 )}
                 <div className="flex-1 space-y-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <ImagePlus className="mr-2 h-4 w-4" />
-                    {imagePreview ? 'Cambiar imagen' : 'Seleccionar imagen'}
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    {isMobileApp() && (
+                      <Button type="button" variant="outline" size="sm" onClick={handleCapturePhoto}>
+                        <Camera className="mr-2 h-4 w-4" />
+                        Tomar foto
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <ImagePlus className="mr-2 h-4 w-4" />
+                      {imagePreview ? 'Cambiar imagen' : 'Seleccionar imagen'}
+                    </Button>
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     JPG, PNG o WebP. Se redimensiona automaticamente.
                   </p>

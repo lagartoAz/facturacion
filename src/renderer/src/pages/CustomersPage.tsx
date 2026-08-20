@@ -240,7 +240,7 @@ export default function CustomersPage(): JSX.Element {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 landscape:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Clientes</h1>
         <Button onClick={openNew}>
@@ -291,7 +291,7 @@ export default function CustomersPage(): JSX.Element {
         const paged = filtered.slice((page - 1) * CUSTOMER_PAGE_SIZE, page * CUSTOMER_PAGE_SIZE)
         return (
           <>
-            <div className="border rounded-lg overflow-hidden">
+            <div className="border rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
@@ -433,7 +433,7 @@ export default function CustomersPage(): JSX.Element {
               {creditInvoices.length > 0 && (
                 <div>
                   <p className="text-sm font-medium mb-2">Facturas a credito</p>
-                  <div className="border rounded overflow-hidden max-h-48 overflow-y-auto">
+                  <div className="border rounded overflow-x-auto max-h-48 overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50">
                         <tr>
@@ -578,7 +578,7 @@ export default function CustomersPage(): JSX.Element {
                 </div>
               </div>
 
-              <div className="border rounded overflow-hidden">
+              <div className="border rounded overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>

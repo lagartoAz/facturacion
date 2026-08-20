@@ -61,10 +61,10 @@ export default function ReportsPage(): JSX.Element {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 landscape:p-6 space-y-6">
       <h1 className="text-2xl font-bold">Reportes</h1>
 
-      <div className="flex gap-4 items-end">
+      <div className="flex flex-wrap gap-3 items-end">
         <div className="space-y-1">
           <label className="text-sm text-muted-foreground">Desde</label>
           <Input
@@ -124,7 +124,7 @@ export default function ReportsPage(): JSX.Element {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 landscape:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between py-3">
             <CardTitle className="text-sm font-medium">Ingresos Totales</CardTitle>

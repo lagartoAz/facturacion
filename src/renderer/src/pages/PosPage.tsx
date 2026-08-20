@@ -622,9 +622,9 @@ export default function PosPage(): JSX.Element {
   }
 
   return (
-    <div className={`flex ${isStandaloneWindow ? 'h-screen' : 'h-full'}`}>
+    <div className={`flex flex-col landscape:flex-row ${isStandaloneWindow ? 'h-screen' : 'h-full'}`}>
       {/* Left panel - Cart */}
-      <div className="flex-1 flex flex-col p-4 border-r">
+      <div className="flex-1 min-h-0 flex flex-col p-4 landscape:border-r order-last landscape:order-none">
         {/* Customer selector */}
         <div className="mb-4">
           <select
@@ -823,7 +823,7 @@ export default function PosPage(): JSX.Element {
       </div>
 
       {/* Right panel - Barcode + Search */}
-      <div className="w-80 flex flex-col p-4">
+      <div className="w-full landscape:w-80 shrink-0 flex flex-col p-4 border-b landscape:border-b-0 order-first landscape:order-none">
         {/* Barcode input */}
         <Card className="mb-4">
           <CardHeader className="py-3">
@@ -867,7 +867,7 @@ export default function PosPage(): JSX.Element {
         </Button>
 
         {/* Search results / product list */}
-        <div className="flex-1 overflow-auto space-y-1">
+        <div className="overflow-auto space-y-1 max-h-56 landscape:max-h-none landscape:flex-1">
           {searchResults.map((p) => (
             <button
               key={p.id}

@@ -70,6 +70,36 @@ export async function prepareProductImage(file: File): Promise<{ data: string; e
   }
 }
 
+// True when running inside the Capacitor Android WebView (set by web-api.ts).
+export function isMobileApp(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    (window as unknown as { __mobileApi?: boolean }).__mobileApi === true
+  )
+}
+
+// Opens the device camera (Android) and returns a ready-to-store JPEG data URL.
+// The plugin already downscales/compresses (width MAX_SIDE, quality 85),
+// matching prepareProductImage, so no extra canvas step is needed. Returns null
+// if the user cancels or denies permission. Imported lazily so the desktop
+// bundle never pulls in the native plugin.
+export async function capturePhoto(): Promise<{ data: string; extension: string } | null> {
+  try {
+    const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera')
+    const photo = await Camera.getPhoto({
+      quality: 85,
+      width: MAX_SIDE,
+      resultType: CameraResultType.DataUrl,
+      source: CameraSource.Camera,
+      saveToGallery: false,
+      correctOrientation: true
+    })
+    return photo.dataUrl ? { data: photo.dataUrl, extension: 'jpg' } : null
+  } catch {
+    return null
+  }
+}
+
 export function useProductImage(productId: number, hasImage: boolean): string | null {
   const [src, setSrc] = useState<string | null>(() => (hasImage ? cache.get(productId) ?? null : null))
 

@@ -289,7 +289,7 @@ export default function InvoicesPage(): JSX.Element {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 landscape:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">
           {tab === 'invoices' ? 'Facturas' : 'Presupuestos'}
@@ -339,7 +339,7 @@ export default function InvoicesPage(): JSX.Element {
       </div>
 
       {tab === 'invoices' && (
-        <div className="border rounded-lg overflow-hidden">
+        <div className="border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -414,7 +414,7 @@ export default function InvoicesPage(): JSX.Element {
       )}
 
       {tab === 'quotes' && (
-        <div className="border rounded-lg overflow-hidden">
+        <div className="border rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -513,7 +513,7 @@ export default function InvoicesPage(): JSX.Element {
                 </div>
               </div>
 
-              <div className="border rounded overflow-hidden">
+              <div className="border rounded overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
@@ -615,7 +615,7 @@ export default function InvoicesPage(): JSX.Element {
                 </div>
               </div>
 
-              <div className="border rounded overflow-hidden">
+              <div className="border rounded overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>

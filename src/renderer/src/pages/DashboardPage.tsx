@@ -85,8 +85,8 @@ export default function DashboardPage(): JSX.Element {
     rates.find((r) => r.currency === currency)?.rate ?? 0
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-4 landscape:p-6 space-y-6">
+      <div className="flex flex-col gap-3 landscape:flex-row landscape:items-center landscape:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">{format(new Date(), 'EEEE, dd MMMM yyyy')}</p>
@@ -104,7 +104,7 @@ export default function DashboardPage(): JSX.Element {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 landscape:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between py-3">
             <CardTitle className="text-sm font-medium">Ventas Hoy (USD)</CardTitle>

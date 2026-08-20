@@ -448,7 +448,7 @@ export default function SettingsPage(): JSX.Element {
   const isMobileApp = !!(window as unknown as { __mobileApi?: boolean }).__mobileApi
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl">
+    <div className="p-4 landscape:p-6 space-y-6 max-w-2xl">
       <h1 className="text-2xl font-bold">Configuracion</h1>
 
       {isMobileApp && <ThermalPrinterCard />}
@@ -458,7 +458,7 @@ export default function SettingsPage(): JSX.Element {
           <CardTitle className="text-lg">Tasas de Cambio</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 landscape:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="rateVes">1 USD = X Bolivares (VES)</Label>
               <Input
@@ -494,7 +494,7 @@ export default function SettingsPage(): JSX.Element {
           <CardTitle className="text-lg">Datos del Negocio</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 landscape:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="businessName">Nombre del Negocio</Label>
               <Input
@@ -618,7 +618,7 @@ export default function SettingsPage(): JSX.Element {
             />
             <p className="text-xs text-muted-foreground">Aparece en la parte superior de cada impresion. Dejar vacio para no mostrar.</p>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 landscape:grid-cols-3 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Tamano de letra (px)</Label>
               <Input
@@ -708,7 +708,7 @@ export default function SettingsPage(): JSX.Element {
           <p className="text-sm text-muted-foreground">
             Exporta tus datos como CSV (Excel los abre directamente) o restaura inventario desde un CSV.
           </p>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 landscape:grid-cols-3 gap-3">
             <Button
               variant="outline"
               className="h-auto py-4 flex flex-col gap-2"
@@ -896,7 +896,7 @@ export default function SettingsPage(): JSX.Element {
                 Compartir la base de datos con otras terminales en esta red
               </label>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 landscape:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label className="text-xs">Puerto</Label>
                   <Input
@@ -952,7 +952,7 @@ export default function SettingsPage(): JSX.Element {
                 Esta es una <strong>terminal de acceso</strong>: usa la base de datos del servidor
                 principal por la red. Si cambia la IP del servidor o la clave, actualizalas aqui.
               </p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 landscape:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label className="text-xs">IP del servidor</Label>
                   <Input
