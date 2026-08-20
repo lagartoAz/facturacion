@@ -12,13 +12,21 @@
     "pack": "electron-builder --dir",
     "dist": "electron-vite build && electron-builder",
     "dist:server": "electron-vite build && electron-builder",
-    "dist:client": "cross-env APP_ROLE=client electron-vite build && electron-builder --config electron-builder.client.yml"
+    "dist:client": "cross-env APP_ROLE=client electron-vite build && electron-builder --config electron-builder.client.yml",
+    "android:sync": "electron-vite build && cap sync android",
+    "android:open": "cap open android",
+    "android:apk": "electron-vite build && cap sync android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
     "better-sqlite3": "^11.7.0",
-    "date-fns": "^4.1.0"
+    "date-fns": "^4.1.0",
+    "node-sqlite3-wasm": "^0.8.60"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/preferences": "^6.0.4",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
     "@hookform/resolvers": "^3.9.1",
