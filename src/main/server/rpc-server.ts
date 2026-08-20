@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'http'
 import { app } from 'electron'
 import { invokeChannel } from './handler-registry'
-import { getNetworkConfig } from '../services/network-config.service'
+import { getNetworkConfig, getLanAddresses } from '../services/network-config.service'
 
 // Channels that only make sense on the machine running them (printing, dialogs,
 // USB license, local DB/backup management). Clients keep these local, and the
@@ -59,10 +59,29 @@ export function startRpcServer(): Promise<{ port: number }> {
     const cfg = getNetworkConfig()
 
     const srv = createServer((req, res) => {
+      // CORS so the Android (Capacitor WebView, origin http://localhost) and
+      // browser clients can call /auth and /rpc. Desktop clients ignore these.
+      res.setHeader('Access-Control-Allow-Origin', '*')
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Auth-Token')
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204)
+        res.end()
+        return
+      }
+
       // Health check so clients can verify the server is reachable.
       if (req.method === 'GET' && req.url === '/ping') {
         res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify({ ok: true, role: 'server', version: app.getVersion() }))
+        res.end(
+          JSON.stringify({
+            ok: true,
+            role: 'server',
+            version: app.getVersion(),
+            // So an Android server device can display the address terminals use.
+            addresses: getLanAddresses()
+          })
+        )
         return
       }
 
