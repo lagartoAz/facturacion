@@ -22,7 +22,7 @@ const MODE_KEY = 'facturacion.mode'
 const PRINTER_KEY = 'facturacion.printer'
 const LOCAL_HOST = '127.0.0.1'
 // Kept in sync with package.json; shown in the network info card.
-const APP_VERSION = '1.12.0'
+const APP_VERSION = '1.13.0'
 
 type Mode = '' | 'server' | 'client'
 

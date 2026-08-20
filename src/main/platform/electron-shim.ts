@@ -33,7 +33,7 @@ export const app = {
     return p
   },
   getAppPath: (): string => baseDir,
-  getVersion: (): string => process.env.FACT_VERSION || '1.12.0',
+  getVersion: (): string => process.env.FACT_VERSION || '1.13.0',
   getName: (): string => 'facturacion',
   isPackaged: true,
   setPath: (): void => {},
