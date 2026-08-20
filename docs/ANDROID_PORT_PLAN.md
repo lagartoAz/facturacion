@@ -105,12 +105,20 @@ Objetivo: que un Android guarde la DB y atienda terminales.
 - **Entregable:** APK "base principal" que funciona como servidor para otras terminales.
 
 ### Fase 3 — Impresión ESC/POS (Bluetooth / WiFi) seleccionable
-1. Pantalla de configuración de impresora: elegir **Bluetooth** o **Red/WiFi**.
-   - Bluetooth: escanear/emparejar impresora térmica.
-   - WiFi: IP + puerto (9100 típico).
-2. Generar comandos **ESC/POS** desde el ticket (hoy se imprime HTML; en térmica se manda ESC/POS).
-3. Plugin de impresión (Capacitor community BT/TCP o plugin propio) y guardar config por dispositivo.
-- **Entregable:** impresión de tickets desde Android por el transporte elegido.
+1. **Codificador ESC/POS** ✅ HECHO Y VALIDADO. `src/shared/escpos.ts` genera los bytes desde un
+   modelo `ReceiptData` (`src/shared/receipt.ts`): init, alineación, negrita/doble alto, layout de
+   columnas 58/80mm, mapeo de acentos/ñ a CP850 y corte. Puro y testeable.
+2. **Impresión por Red/WiFi** ✅ HECHA Y VALIDADA end-to-end. Canal servible `escpos:network`
+   (`escpos.ipc.ts` + `escpos-network.service.ts`, TCP en Node) al que el terminal reenvía el job y el
+   servidor lo relaya a la impresora IP:9100. Verificado con `scripts/escpos-smoketest.ts` contra una
+   impresora TCP simulada: la impresora recibe el **stream exacto**.
+3. **UI de configuración** ✅ `ThermalPrinterCard.tsx` en Ajustes (solo Android): elegir Sin impresora /
+   Red-WiFi (IP+puerto+ancho) / Bluetooth, con "Imprimir prueba". Config guardada por dispositivo en
+   `web-api`. `printReceipt(html, receipt?)` extendido; PosPage pasa el `ReceiptData`.
+4. **Bluetooth** ⏳ PENDIENTE (device-only): falta integrar un plugin Capacitor de BT clásico (SPP). La
+   UI ya lo contempla; hoy devuelve un mensaje de "pendiente".
+- Pendiente menor: cablear `ReceiptData` en los reimpresos de `InvoicesPage` (hoy solo PosPage).
+- **Entregable:** impresión térmica por WiFi funcionando; Bluetooth queda para integración en dispositivo.
 
 ## 4. Dependencias nuevas (previstas)
 - `@capacitor/core`, `@capacitor/cli`, `@capacitor/android`, `@capacitor/preferences`

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
+import type { ReceiptData } from '../../../shared/receipt'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -584,7 +585,27 @@ export default function PosPage(): JSX.Element {
       </body></html>
     `
 
-    const result = await window.api.printReceipt(html)
+    const receipt: ReceiptData = {
+      title: rTitle || undefined,
+      invoiceNumber: inv.invoice_number,
+      dateText: format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm'),
+      customerName: inv.customer_name || undefined,
+      items: inv.items.map((item) => ({
+        name: item.product_name,
+        qty: String(item.quantity),
+        unitPrice: fmt(item.unit_price),
+        total: fmt(item.subtotal)
+      })),
+      totalText: fmt(inv.total_usd),
+      footerTitle: summary.title ? `Compra en ${summary.title}` : undefined,
+      paymentLines: summary.lines.map((line) => ({
+        label: summary.lines.length > 1 ? line.label : '',
+        amount: line.amount
+      })),
+      thanks: 'Gracias por su compra!'
+    }
+
+    const result = await window.api.printReceipt(html, receipt)
     if (!result.success && result.error) {
       showNotification(`Error al imprimir: ${result.error}`)
     }

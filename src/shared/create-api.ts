@@ -7,7 +7,19 @@
 // Both call createApi() with an `invoke(channel, ...args)` function, so the
 // renderer keeps calling `window.api.getProducts()` regardless of platform.
 
+import type { ReceiptData } from './receipt'
+
 export type Invoke = (channel: string, ...args: unknown[]) => Promise<unknown>
+
+// Thermal (ESC/POS) printer configuration used on Android terminals.
+export interface ThermalConfig {
+  transport: 'none' | 'network' | 'bluetooth'
+  ip?: string
+  port?: number
+  btAddress?: string
+  btName?: string
+  width?: number // columns: 32 for 58mm, 48 for 80mm
+}
 
 export function createApi(invoke: Invoke) {
   return {
@@ -188,13 +200,19 @@ export function createApi(invoke: Invoke) {
           isDefault: boolean
         }[]
       >,
-    printReceipt: (html: string) =>
-      invoke('printer:print', html) as Promise<{ success: boolean; error?: string }>,
+    // `receipt` is used for ESC/POS thermal printing (Android); desktop uses html.
+    printReceipt: (html: string, receipt?: ReceiptData) =>
+      invoke('printer:print', html, receipt) as Promise<{ success: boolean; error?: string }>,
     setDefaultPrinter: (deviceName: string | null) =>
       invoke('printer:setDefault', deviceName) as Promise<void>,
     setSilentPrint: (silent: boolean) => invoke('printer:setSilent', silent) as Promise<void>,
     getPrinterConfig: () =>
-      invoke('printer:getConfig') as Promise<{ defaultPrinter: string; silent: boolean }>
+      invoke('printer:getConfig') as Promise<{ defaultPrinter: string; silent: boolean }>,
+
+    // Thermal printer config (Android). Not handled on desktop.
+    getThermalPrinter: () => invoke('printer:getThermal') as Promise<ThermalConfig>,
+    setThermalPrinter: (cfg: ThermalConfig) =>
+      invoke('printer:setThermal', cfg) as Promise<void>
   }
 }
 

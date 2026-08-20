@@ -15,6 +15,7 @@ import { registerPrinterHandlers } from './printer.ipc'
 import { registerSupplierHandlers } from './suppliers.ipc'
 import { registerPurchaseHandlers } from './purchases.ipc'
 import { registerNetworkHandlers } from './network.ipc'
+import { registerEscposHandlers } from './escpos.ipc'
 
 export function registerAllHandlers(db: Database.Database): void {
   registerProductHandlers(db)
@@ -33,4 +34,5 @@ export function registerAllHandlers(db: Database.Database): void {
   registerSupplierHandlers(db)
   registerPurchaseHandlers(db)
   registerNetworkHandlers()
+  registerEscposHandlers()
 }

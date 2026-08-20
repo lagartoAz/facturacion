@@ -66,7 +66,9 @@ export const PROXIED_CHANNELS: string[] = [
   'quotes:getAll',
   'quotes:getById',
   'quotes:delete',
-  'quotes:toCart'
+  'quotes:toCart',
+  // Relay an ESC/POS job to a LAN printer via the server (network printing).
+  'escpos:network'
 ]
 
 // Channels that manage the local database/backups/files of the primary PC. They

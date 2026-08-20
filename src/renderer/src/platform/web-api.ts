@@ -11,12 +11,15 @@
 //   - client: a terminal that connects to a remote server (PC or another Android).
 // Until a role is chosen the mode is '' and getNetworkInfo reports 'unselected'.
 
-import { createApi } from '../../../shared/create-api'
+import { createApi, type ThermalConfig } from '../../../shared/create-api'
+import { encodeReceipt } from '../../../shared/escpos'
+import type { ReceiptData } from '../../../shared/receipt'
 import { PROXIED_CHANNELS, SERVER_ONLY_CHANNELS } from '../../../main/shared/channels'
 
 const DEFAULT_PORT = 47600
 const STORE_KEY = 'facturacion.connection'
 const MODE_KEY = 'facturacion.mode'
+const PRINTER_KEY = 'facturacion.printer'
 const LOCAL_HOST = '127.0.0.1'
 // Kept in sync with package.json; shown in the network info card.
 const APP_VERSION = '1.12.0'
@@ -32,6 +35,35 @@ interface Conn {
 let mode: Mode = loadMode()
 let conn: Conn | null = loadConn()
 let connected = false
+let printer: ThermalConfig = loadPrinter()
+
+function loadPrinter(): ThermalConfig {
+  try {
+    const raw = localStorage.getItem(PRINTER_KEY)
+    if (raw) return JSON.parse(raw) as ThermalConfig
+  } catch {
+    // ignore
+  }
+  return { transport: 'none' }
+}
+
+function savePrinter(cfg: ThermalConfig): void {
+  try {
+    localStorage.setItem(PRINTER_KEY, JSON.stringify(cfg))
+  } catch {
+    // ignore
+  }
+}
+
+// base64 of a byte array, chunked to avoid arg-count limits on large receipts.
+function toBase64(bytes: Uint8Array): string {
+  let bin = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(bin)
+}
 
 function loadMode(): Mode {
   try {
@@ -236,12 +268,42 @@ const localHandlers: Record<string, (args: unknown[]) => Promise<unknown> | unkn
     licensePath: null
   }),
 
-  // Printing is configured in a later phase (ESC/POS Bluetooth/WiFi). Stub for now.
+  // Thermal (ESC/POS) printing on Android.
+  'printer:getThermal': () => printer,
+  'printer:setThermal': ([cfg]) => {
+    printer = (cfg as ThermalConfig) ?? { transport: 'none' }
+    savePrinter(printer)
+    return undefined
+  },
+  'printer:print': async ([, receipt]) => {
+    const data = receipt as ReceiptData | undefined
+    if (printer.transport === 'none') {
+      return { success: false, error: 'No hay impresora configurada. Ve a Ajustes > Impresora.' }
+    }
+    if (!data) {
+      return { success: false, error: 'Esta impresion no admite impresora termica todavia.' }
+    }
+    const bytes = encodeReceipt(data, { width: printer.width ?? 32 })
+    if (printer.transport === 'network') {
+      if (!printer.ip) return { success: false, error: 'Configura la IP de la impresora en Ajustes.' }
+      try {
+        return (await rpc('escpos:network', [printer.ip, printer.port ?? 9100, toBase64(bytes)])) as {
+          success: boolean
+          error?: string
+        }
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+    // bluetooth: needs a native classic-BT plugin (device-only, pending).
+    return {
+      success: false,
+      error: 'Impresion Bluetooth: falta integrar el plugin nativo en el dispositivo.'
+    }
+  },
+
+  // Desktop-oriented printer channels are inert on Android.
   'printer:list': () => [],
-  'printer:print': () => ({
-    success: false,
-    error: 'La impresion en Android aun no esta configurada.'
-  }),
   'printer:setDefault': () => undefined,
   'printer:setSilent': () => undefined,
   'printer:getConfig': () => ({ defaultPrinter: '', silent: false })
@@ -263,4 +325,6 @@ export function installWebApi(): void {
   if (typeof window === 'undefined') return
   if ((window as unknown as { api?: unknown }).api) return
   ;(window as unknown as { api: unknown }).api = createApi(invoke)
+  // Lets the UI show mobile-only options (e.g. the thermal printer settings).
+  ;(window as unknown as { __mobileApi?: boolean }).__mobileApi = true
 }
