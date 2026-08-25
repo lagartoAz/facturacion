@@ -366,7 +366,7 @@ export default function CashRegisterPage(): JSX.Element {
               <CardTitle className="text-lg">Sesion Actual</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 landscape:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-muted-foreground">Apertura:</span>{' '}
                   {format(new Date(currentRegister.opened_at), 'dd/MM/yyyy HH:mm')}
@@ -528,7 +528,7 @@ export default function CashRegisterPage(): JSX.Element {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="border rounded overflow-x-auto">
+            <div className="border rounded overflow-x-auto hidden landscape:block">
               <table className="w-full text-sm min-w-[700px]">
                 <thead className="bg-muted/50">
                   <tr>
@@ -571,6 +571,53 @@ export default function CashRegisterPage(): JSX.Element {
                   })}
                 </tbody>
               </table>
+            </div>
+            <div className="landscape:hidden space-y-2">
+              {history.map((reg) => {
+                const totalBsBanco = (reg.sales_card_ves || 0) + (reg.sales_transfer_ves || 0)
+                return (
+                  <div key={reg.id} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">{format(new Date(reg.opened_at), 'dd/MM')}</p>
+                        <p className="text-xs text-muted-foreground">{format(new Date(reg.opened_at), 'HH:mm')}{reg.closed_at ? ` - ${format(new Date(reg.closed_at), 'HH:mm')}` : ''}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-medium ${reg.difference != null ? (reg.difference < 0 ? 'text-red-500' : reg.difference > 0 ? 'text-green-500' : '') : ''}`}>
+                          {reg.difference != null ? (reg.difference >= 0 ? '+' : '') + formatUSD(reg.difference) : '-'}
+                        </span>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(reg)}>
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Efect. USD</span>
+                      <span className="font-medium text-foreground">{reg.closing_amount != null ? formatUSD(reg.closing_amount) : '-'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Efect. VES</span>
+                      <span className="font-medium text-foreground">{reg.closing_amount_ves ? formatVES(reg.closing_amount_ves) : '-'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Efect. COP</span>
+                      <span className="font-medium text-foreground">{reg.closing_amount_cop ? formatCOP(reg.closing_amount_cop) : '-'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Bs Banco</span>
+                      <span className="font-medium text-blue-500">{totalBsBanco > 0 ? formatVES(totalBsBanco) : '-'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">COP Banco</span>
+                      <span className="font-medium text-blue-500">{(reg.sales_transfer_cop || 0) > 0 ? formatCOP(reg.sales_transfer_cop) : '-'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Facturas</span>
+                      <span className="font-medium text-foreground">{reg.total_invoices}</span>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
@@ -802,7 +849,7 @@ export default function CashRegisterPage(): JSX.Element {
               {/* Counted amounts */}
               <div className="space-y-3">
                 <p className="text-sm font-medium">Efectivo contado en caja</p>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 landscape:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Dolares (USD)</Label>
                     <Input
@@ -947,7 +994,7 @@ export default function CashRegisterPage(): JSX.Element {
 
               <div className="space-y-3">
                 <p className="text-sm font-medium">Efectivo contado en caja</p>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 landscape:grid-cols-3 gap-3">
                   <div className="space-y-1">
                     <Label className="text-xs">Dolares (USD)</Label>
                     <Input

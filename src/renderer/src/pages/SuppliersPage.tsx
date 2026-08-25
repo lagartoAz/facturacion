@@ -135,7 +135,7 @@ export default function SuppliersPage(): JSX.Element {
         </span>
       </div>
 
-      <div className="border rounded-lg overflow-x-auto">
+      <div className="hidden landscape:block border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
@@ -191,6 +191,55 @@ export default function SuppliersPage(): JSX.Element {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="landscape:hidden space-y-2">
+        {suppliers.map((s) => (
+          <div key={s.id} className="border rounded-lg p-3 space-y-2">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-2 font-medium">
+                <Truck className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                {s.name}
+              </div>
+              <Badge variant={s.product_count > 0 ? 'default' : 'secondary'}>
+                {s.product_count} {s.product_count === 1 ? 'producto' : 'productos'}
+              </Badge>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Contacto</span>
+              <span className="font-medium text-foreground">{s.contact_name || '-'}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Telefono</span>
+              <span className="font-medium text-foreground">{s.phone || '-'}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Email</span>
+              <span className="font-medium text-foreground">{s.email || '-'}</span>
+            </div>
+            <div className="flex justify-end gap-1 pt-1 border-t">
+              <Button variant="outline" size="sm" onClick={() => setPurchaseSupplier(s)} title="Registrar ingreso de productos">
+                <PackagePlus className="mr-1 h-4 w-4" />
+                Factura nueva
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setHistorySupplier(s)} title="Ver historial de ingresos">
+                <History className="mr-1 h-4 w-4" />
+                Historial
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => openEdit(s)} title="Editar">
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => handleDelete(s)} title="Eliminar">
+                <Trash2 className="h-4 w-4 text-red-500" />
+              </Button>
+            </div>
+          </div>
+        ))}
+        {suppliers.length === 0 && (
+          <div className="p-8 text-center text-muted-foreground text-sm">
+            No hay proveedores registrados.
+          </div>
+        )}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

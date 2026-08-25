@@ -303,7 +303,7 @@ export default function ProductsPage(): JSX.Element {
         </div>
       </div>
 
-      <div className="border rounded-lg overflow-x-auto">
+      <div className="hidden landscape:block border rounded-lg overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
@@ -365,6 +365,64 @@ export default function ProductsPage(): JSX.Element {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="landscape:hidden space-y-2">
+        {products.map((p) => (
+          <div key={p.id} className="border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ProductThumb productId={p.id} hasImage={!!p.has_image} name={p.name} />
+                <span className="font-medium">{p.name}</span>
+              </div>
+              <Badge variant={p.is_active ? 'default' : 'secondary'}>
+                {p.is_active ? 'Activo' : 'Inactivo'}
+              </Badge>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Codigo</span>
+              <span className="font-medium text-foreground">{p.barcode || '-'}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Categoria</span>
+              <span className="font-medium text-foreground">{p.category_name || '-'}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Proveedor</span>
+              <span className="font-medium text-foreground">{p.supplier_name || '-'}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Precio USD</span>
+              <span className="font-medium text-foreground">${p.price_usd.toFixed(2)}{p.is_by_weight ? '/kg' : ''}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-muted-foreground">Stock</span>
+              <span className={p.stock <= p.min_stock ? 'text-red-500 font-semibold' : 'font-medium text-foreground'}>
+                {p.stock}
+              </span>
+            </div>
+            <div className="flex justify-end gap-1 pt-1 border-t">
+              <Button variant="ghost" size="icon" onClick={() => openStats(p)} title="Estadisticas">
+                <BarChart3 className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => openEditDialog(p)} title="Editar">
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={() => handleToggleActive(p.id)} title={p.is_active ? 'Desactivar' : 'Activar'}>
+                {p.is_active ? (
+                  <ToggleRight className="h-4 w-4" />
+                ) : (
+                  <ToggleLeft className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+        ))}
+        {products.length === 0 && (
+          <div className="p-8 text-center text-muted-foreground text-sm">
+            No hay productos. Haz clic en "Nuevo Producto" para agregar uno.
+          </div>
+        )}
       </div>
 
       {productTotal > PRODUCT_PAGE_SIZE && (

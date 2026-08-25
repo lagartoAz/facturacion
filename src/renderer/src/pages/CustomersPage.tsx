@@ -291,7 +291,7 @@ export default function CustomersPage(): JSX.Element {
         const paged = filtered.slice((page - 1) * CUSTOMER_PAGE_SIZE, page * CUSTOMER_PAGE_SIZE)
         return (
           <>
-            <div className="border rounded-lg overflow-x-auto">
+            <div className="hidden landscape:block border rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
@@ -338,6 +338,47 @@ export default function CustomersPage(): JSX.Element {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div className="landscape:hidden space-y-2">
+              {paged.map((c) => {
+                const badge = getDebtBadge(c.id)
+                return (
+                  <div key={c.id} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex justify-between items-start">
+                      <span className="font-medium">{c.name}</span>
+                      <Badge variant={badge.variant} className={badge.className}>{badge.label}</Badge>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">RIF / Cedula</span>
+                      <span className="font-medium text-foreground">{c.id_rif || '-'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Telefono</span>
+                      <span className="font-medium text-foreground">{c.phone || '-'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Email</span>
+                      <span className="font-medium text-foreground">{c.email || '-'}</span>
+                    </div>
+                    <div className="flex justify-end gap-1 pt-1 border-t">
+                      <Button variant="ghost" size="icon" onClick={() => openDebt(c)} title="Ver deuda">
+                        <Wallet className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Editar">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)} title="Eliminar">
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+              {paged.length === 0 && (
+                <div className="p-8 text-center text-muted-foreground text-sm">
+                  {customers.length === 0 ? 'No hay clientes registrados.' : 'Sin resultados para el filtro seleccionado.'}
+                </div>
+              )}
             </div>
             {filtered.length > CUSTOMER_PAGE_SIZE && (
               <div className="flex items-center justify-between text-sm">
@@ -433,7 +474,7 @@ export default function CustomersPage(): JSX.Element {
               {creditInvoices.length > 0 && (
                 <div>
                   <p className="text-sm font-medium mb-2">Facturas a credito</p>
-                  <div className="border rounded overflow-x-auto max-h-48 overflow-y-auto">
+                  <div className="hidden landscape:block border rounded overflow-x-auto max-h-48 overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50">
                         <tr>
@@ -482,6 +523,48 @@ export default function CustomersPage(): JSX.Element {
                       </tbody>
                     </table>
                   </div>
+                  <div className="landscape:hidden space-y-2 max-h-48 overflow-y-auto">
+                    {creditInvoices.map((inv) => {
+                      const pending = inv.pendingAmount ?? inv.total_usd
+                      const isPaid = pending === 0
+                      const isPartial = pending > 0 && pending < inv.total_usd
+                      return (
+                        <div key={inv.id} className={`border rounded-lg p-3 space-y-2 ${isPaid ? 'opacity-50' : ''}`}>
+                          <div className="flex justify-between items-start">
+                            <span className="font-medium font-mono text-xs">{inv.invoice_number}</span>
+                            {isPaid ? (
+                              <span className="text-green-600 font-medium">Pagada</span>
+                            ) : (
+                              <span className={`font-semibold ${isPartial ? 'text-yellow-600' : 'text-red-600'}`}>
+                                {formatUSD(pending)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Fecha</span>
+                            <span className="font-medium text-foreground">{format(new Date(inv.created_at), 'dd/MM/yyyy')}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">Total</span>
+                            <span className="font-medium text-foreground">{formatUSD(inv.total_usd)}</span>
+                          </div>
+                          {!isPaid && (
+                            <div className="flex justify-end gap-1 pt-1 border-t">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                title="Ver y pagar factura"
+                                onClick={() => openInvoiceDetail(inv)}
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
 
@@ -489,7 +572,7 @@ export default function CustomersPage(): JSX.Element {
               {payments.length > 0 && (
                 <div>
                   <p className="text-sm font-medium mb-2">Historial de pagos</p>
-                  <div className="border rounded overflow-hidden max-h-40 overflow-y-auto">
+                  <div className="hidden landscape:block border rounded overflow-hidden max-h-40 overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-muted/50">
                         <tr>
@@ -508,6 +591,20 @@ export default function CustomersPage(): JSX.Element {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="landscape:hidden space-y-2 max-h-40 overflow-y-auto">
+                    {payments.map((p) => (
+                      <div key={p.id} className="border rounded-lg p-3 space-y-2">
+                        <div className="flex justify-between items-start">
+                          <span className="font-medium">{format(new Date(p.created_at), 'dd/MM/yyyy')}</span>
+                          <span className="text-green-600 font-medium">{formatUSD(p.amount_usd)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Nota</span>
+                          <span className="font-medium text-foreground">{p.notes || '-'}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -578,7 +675,7 @@ export default function CustomersPage(): JSX.Element {
                 </div>
               </div>
 
-              <div className="border rounded overflow-x-auto">
+              <div className="hidden landscape:block border rounded overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
@@ -599,6 +696,24 @@ export default function CustomersPage(): JSX.Element {
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="landscape:hidden space-y-2">
+                {invoiceDetail.items?.map((item, i) => (
+                  <div key={i} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex justify-between items-start">
+                      <span className="font-medium">{item.product_name}</span>
+                      <span className="font-medium text-foreground">{formatUSD(item.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Cant</span>
+                      <span className="font-medium text-foreground">{item.quantity}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">P.U.</span>
+                      <span className="font-medium text-foreground">{formatUSD(item.unit_price)}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <div className="flex justify-between text-sm font-bold">

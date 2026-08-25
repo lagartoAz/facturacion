@@ -219,28 +219,48 @@ export default function ReportsPage(): JSX.Element {
         </CardHeader>
         <CardContent>
           {topProducts.length > 0 ? (
-            <div className="border rounded overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="text-left p-3 font-medium">#</th>
-                    <th className="text-left p-3 font-medium">Producto</th>
-                    <th className="text-right p-3 font-medium">Cantidad</th>
-                    <th className="text-right p-3 font-medium">Ingreso</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topProducts.map((p, i) => (
-                    <tr key={i} className="border-t">
-                      <td className="p-3 text-muted-foreground">{i + 1}</td>
-                      <td className="p-3">{p.name}</td>
-                      <td className="p-3 text-right">{p.quantity}</td>
-                      <td className="p-3 text-right font-semibold">{formatUSD(p.revenue)}</td>
+            <>
+              <div className="hidden landscape:block border rounded overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-3 font-medium">#</th>
+                      <th className="text-left p-3 font-medium">Producto</th>
+                      <th className="text-right p-3 font-medium">Cantidad</th>
+                      <th className="text-right p-3 font-medium">Ingreso</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {topProducts.map((p, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="p-3 text-muted-foreground">{i + 1}</td>
+                        <td className="p-3">{p.name}</td>
+                        <td className="p-3 text-right">{p.quantity}</td>
+                        <td className="p-3 text-right font-semibold">{formatUSD(p.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="landscape:hidden space-y-2">
+                {topProducts.map((p, i) => (
+                  <div key={i} className="border rounded-lg p-3 space-y-2">
+                    <div className="font-medium">
+                      <span className="text-muted-foreground">{i + 1}. </span>
+                      {p.name}
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Cantidad</span>
+                      <span className="font-medium text-foreground">{p.quantity}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Ingreso</span>
+                      <span className="font-medium text-foreground">{formatUSD(p.revenue)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
             <p className="text-center text-muted-foreground py-8">
               No hay datos para el periodo seleccionado

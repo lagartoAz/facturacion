@@ -13,6 +13,10 @@ import {
 import { useBarcode } from '@/hooks/use-barcode'
 import { ProductThumb } from '@/components/ProductThumb'
 import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency'
+import { format } from 'date-fns'
+import type { ReceiptData } from '../../../shared/receipt'
+import { shareReceiptToWhatsApp } from '@/lib/whatsapp'
+import { isMobileApp } from '@/lib/product-image'
 import {
   Barcode,
   Plus,
@@ -22,7 +26,8 @@ import {
   ClipboardList,
   PlusCircle,
   CheckCircle2,
-  FileSignature
+  FileSignature,
+  MessageCircle
 } from 'lucide-react'
 
 interface Product {
@@ -240,6 +245,35 @@ export default function QuotesPage(): JSX.Element {
     setSuccessDialogOpen(false)
     setCompletedQuote(null)
     barcodeInputRef.current?.focus()
+  }
+
+  async function shareQuoteWhatsApp(): Promise<void> {
+    if (!completedQuote) return
+    // The created quote summary has no items, so fetch the full one for the PDF.
+    const q = await window.api.getQuoteById(completedQuote.id)
+    const settings = await window.api.getAllSettings()
+    const rTitle = (settings.receipt_title || '').trim()
+    const lines: { label: string; amount: string }[] = []
+    if (q.total_ves) lines.push({ label: 'Bs.', amount: q.total_ves.toFixed(2) })
+    if (q.total_cop) lines.push({ label: 'COP', amount: String(Math.round(q.total_cop)) })
+    const receipt: ReceiptData = {
+      title: rTitle || undefined,
+      invoiceNumber: `PRESUPUESTO ${q.quote_number}`,
+      dateText: format(new Date(q.created_at), 'dd/MM/yyyy HH:mm'),
+      customerName: q.customer_name || undefined,
+      items: (q.items ?? []).map((item: { product_name: string; quantity: number; unit_price: number; subtotal: number }) => ({
+        name: item.product_name,
+        qty: String(item.quantity),
+        unitPrice: `$${item.unit_price.toFixed(2)}`,
+        total: `$${item.subtotal.toFixed(2)}`
+      })),
+      totalText: `$${q.total_usd.toFixed(2)}`,
+      footerTitle: 'No es factura. Valido como presupuesto.',
+      paymentLines: lines,
+      thanks: undefined
+    }
+    const res = await shareReceiptToWhatsApp(receipt, `Presupuesto ${q.quote_number}`)
+    if (!res.ok && res.error) showNotification(`Error al compartir: ${res.error}`)
   }
 
   return (
@@ -549,8 +583,19 @@ export default function QuotesPage(): JSX.Element {
               </p>
             </div>
           )}
-          <DialogFooter>
-            <Button onClick={handleCloseSuccess}>Continuar</Button>
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            {isMobileApp() && (
+              <Button
+                onClick={shareQuoteWhatsApp}
+                className="flex-1 bg-green-600 text-white hover:bg-green-700"
+              >
+                <MessageCircle className="mr-2 h-4 w-4" />
+                Compartir por WhatsApp
+              </Button>
+            )}
+            <Button variant={isMobileApp() ? 'outline' : 'default'} onClick={handleCloseSuccess}>
+              Continuar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

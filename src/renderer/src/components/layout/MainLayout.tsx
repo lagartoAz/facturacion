@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Menu, ShoppingCart } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isMobileApp } from '@/lib/product-image'
-import { AppSidebar } from './AppSidebar'
+import { AppSidebar, navItems } from './AppSidebar'
 
 function matchesShortcut(e: KeyboardEvent, combo: string): boolean {
   if (!combo) return false
@@ -31,6 +31,16 @@ export function MainLayout(): JSX.Element {
   // arrow to the Dashboard. Finishing a sale routes to /invoices, which restores
   // the normal chrome (see PosPage.handleCloseSuccess).
   const posFullscreen = isMobileApp() && location.pathname === '/pos'
+
+  // Title of the current view, shown in the mobile top bar next to the hamburger.
+  // Exact match first, then the deepest matching prefix (for nested routes).
+  const currentNav =
+    navItems.find((n) => n.to === location.pathname) ??
+    navItems
+      .filter((n) => n.to !== '/' && location.pathname.startsWith(n.to))
+      .sort((a, b) => b.to.length - a.to.length)[0]
+  const HeaderIcon = currentNav?.icon ?? ShoppingCart
+  const headerTitle = currentNav?.label ?? 'NOTAS'
 
   // Close the drawer whenever the route changes (e.g. tapping a nav item).
   useEffect(() => {
@@ -120,8 +130,8 @@ export function MainLayout(): JSX.Element {
             >
               <Menu className="h-6 w-6" />
             </button>
-            <ShoppingCart className="h-5 w-5 text-primary" />
-            <span className="font-semibold">NOTAS</span>
+            <HeaderIcon className="h-5 w-5 text-primary" />
+            <span className="font-semibold">{headerTitle}</span>
           </header>
         )}
 

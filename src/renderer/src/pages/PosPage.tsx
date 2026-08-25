@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import type { ReceiptData } from '../../../shared/receipt'
 import { isMobileApp } from '@/lib/product-image'
 import { scanBarcode } from '@/lib/barcode-scanner'
+import { shareReceiptToWhatsApp } from '@/lib/whatsapp'
 import { notifyLargeSale } from '@/lib/notifications'
 import { NumericKeypad } from '@/components/NumericKeypad'
 import { Button } from '@/components/ui/button'
@@ -49,7 +50,8 @@ import {
   Clock,
   ArrowLeft,
   Camera,
-  User
+  User,
+  MessageCircle
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -115,6 +117,12 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
 interface PaymentLine {
   label: string
   amount: string
+}
+
+// Cart names on the phone show in full up to 20 chars; longer names are cut
+// with an ellipsis so the row stays compact and the price stays visible.
+function capName(name: string): string {
+  return name.length > 20 ? `${name.slice(0, 20).trimEnd()}…` : name
 }
 
 function getPaymentSummary(inv: CompletedInvoice): { title: string; lines: PaymentLine[] } {
@@ -667,6 +675,41 @@ export default function PosPage(): JSX.Element {
     }
   }
 
+  // Structured receipt for the WhatsApp PDF (same content as the printed one).
+  async function buildReceiptData(inv: NonNullable<typeof completedInvoice>): Promise<ReceiptData> {
+    const paid = getPaidCurrency(inv)
+    const fmt = (usd: number): string => plainAmountIn(usd, paid, inv.rate_ves, inv.rate_cop)
+    const summary = getPaymentSummary(inv)
+    const settings = await window.api.getAllSettings()
+    const rTitle = (settings.receipt_title || '').trim()
+    return {
+      title: rTitle || undefined,
+      invoiceNumber: inv.invoice_number,
+      dateText: format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm'),
+      customerName: inv.customer_name || undefined,
+      items: inv.items.map((item) => ({
+        name: item.product_name,
+        qty: String(item.quantity),
+        unitPrice: fmt(item.unit_price),
+        total: fmt(item.subtotal)
+      })),
+      totalText: fmt(inv.total_usd),
+      footerTitle: summary.title ? `Compra en ${summary.title}` : undefined,
+      paymentLines: summary.lines.map((line) => ({
+        label: summary.lines.length > 1 ? line.label : '',
+        amount: line.amount
+      })),
+      thanks: 'Gracias por su compra!'
+    }
+  }
+
+  async function handleShareWhatsApp(): Promise<void> {
+    if (!completedInvoice) return
+    const receipt = await buildReceiptData(completedInvoice)
+    const res = await shareReceiptToWhatsApp(receipt, `Factura ${completedInvoice.invoice_number}`)
+    if (!res.ok && res.error) showNotification(`Error al compartir: ${res.error}`)
+  }
+
   function handleCloseSuccess(): void {
     setSuccessDialogOpen(false)
     setCompletedInvoice(null)
@@ -731,7 +774,90 @@ export default function PosPage(): JSX.Element {
             </div>
           ) : (
             <div className="space-y-2">
-              {cart.map((item, idx) => (
+              {cart.map((item, idx) =>
+                mobile ? (
+                <div
+                  key={item.isCustom || item.isByWeight ? `custom-${idx}` : item.productId}
+                  className="p-3 border rounded-lg space-y-2"
+                >
+                  {/* Row 1: name (up to 20 chars) + unit price + delete */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium leading-snug">{capName(item.productName)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.isCustom ? 'Ingreso personalizado' : `${formatUSD(item.unitPrice)}${item.isByWeight ? '/kg' : ' c/u'}`}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => (item.isByWeight || item.isCustom) ? setCart(prev => prev.filter((_, i) => i !== idx)) : removeFromCart(item.productId)}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                  {/* Row 2: quantity control + line total (own row, prices never covered) */}
+                  <div className="flex items-center justify-between gap-2">
+                    {item.isCustom ? (
+                      <span className="text-sm font-medium text-blue-500 flex items-center">
+                        <PlusCircle className="h-4 w-4 mr-1" />
+                        1
+                      </span>
+                    ) : item.isByWeight ? (
+                      <span className="text-sm font-medium">{item.quantity.toFixed(3)} kg</span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={() => updateQuantity(item.productId, -1)}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <button
+                          className="h-9 min-w-[3rem] px-3 rounded-md border font-medium text-center"
+                          onClick={() =>
+                            setKeypadTarget({
+                              type: 'qty',
+                              productId: item.productId,
+                              current: item.quantity
+                            })
+                          }
+                        >
+                          {item.quantity}
+                        </button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={() => updateQuantity(item.productId, 1)}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                    <div className="text-right shrink-0">
+                      <p className="font-semibold">{formatUSD(item.unitPrice * item.quantity)}</p>
+                      {(getRate('VES') > 0 || getRate('COP') > 0) && (
+                        <p className="text-xs text-muted-foreground/80 leading-tight">
+                          {getRate('VES') > 0 && (
+                            <span className="block">
+                              {formatVES(convertCurrency(item.unitPrice * item.quantity, getRate('VES')))}
+                            </span>
+                          )}
+                          {getRate('COP') > 0 && (
+                            <span className="block">
+                              {formatCOP(convertCurrency(item.unitPrice * item.quantity, getRate('COP')))}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                ) : (
                 <div
                   key={item.isCustom || item.isByWeight ? `custom-${idx}` : item.productId}
                   className="flex items-center gap-3 p-3 border rounded-lg"
@@ -761,37 +887,6 @@ export default function PosPage(): JSX.Element {
                     </span>
                   ) : item.isByWeight ? (
                     <span className="text-sm font-medium">{item.quantity.toFixed(3)} kg</span>
-                  ) : mobile ? (
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-9 w-9"
-                        onClick={() => updateQuantity(item.productId, -1)}
-                      >
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <button
-                        className="h-9 min-w-[3rem] px-2 rounded-md border font-medium text-center"
-                        onClick={() =>
-                          setKeypadTarget({
-                            type: 'qty',
-                            productId: item.productId,
-                            current: item.quantity
-                          })
-                        }
-                      >
-                        {item.quantity}
-                      </button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-9 w-9"
-                        onClick={() => updateQuantity(item.productId, 1)}
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
                   ) : (
                     <div className="flex items-center gap-1">
                       <Button
@@ -875,7 +970,8 @@ export default function PosPage(): JSX.Element {
                     <Trash2 className="h-3 w-3 text-red-500" />
                   </Button>
                 </div>
-              ))}
+                )
+              )}
             </div>
           )}
         </div>
@@ -1369,7 +1465,30 @@ export default function PosPage(): JSX.Element {
             )
           })()}
           <DialogFooter className="flex gap-2 sm:gap-2">
-            {printBehavior === 'ask' ? (
+            {mobile ? (
+              <div className="flex w-full flex-col gap-2">
+                <Button
+                  onClick={handleShareWhatsApp}
+                  className="w-full bg-green-600 text-white hover:bg-green-700"
+                >
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  Compartir por WhatsApp
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => handlePrintInvoice()}
+                  >
+                    <Printer className="mr-2 h-4 w-4" />
+                    Imprimir
+                  </Button>
+                  <Button variant="outline" className="flex-1" onClick={handleCloseSuccess}>
+                    Continuar
+                  </Button>
+                </div>
+              </div>
+            ) : printBehavior === 'ask' ? (
               <>
                 <Button variant="outline" onClick={handleCloseSuccess} className="flex-1">
                   Continuar sin imprimir

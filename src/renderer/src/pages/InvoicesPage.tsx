@@ -17,8 +17,11 @@ import {
   formatAmountIn,
   plainAmountIn
 } from '@/lib/currency'
-import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react'
 import { format } from 'date-fns'
+import type { ReceiptData } from '../../../shared/receipt'
+import { shareReceiptToWhatsApp } from '@/lib/whatsapp'
+import { isMobileApp } from '@/lib/product-image'
 
 interface Invoice {
   id: number
@@ -207,6 +210,65 @@ export default function InvoicesPage(): JSX.Element {
     }
   }
 
+  async function shareQuoteWhatsApp(): Promise<void> {
+    if (!selectedQuote) return
+    const q = selectedQuote
+    const settings = await window.api.getAllSettings()
+    const rTitle = (settings.receipt_title || '').trim()
+    const lines: { label: string; amount: string }[] = []
+    if (q.total_ves) lines.push({ label: 'Bs.', amount: q.total_ves.toFixed(2) })
+    if (q.total_cop) lines.push({ label: 'COP', amount: String(Math.round(q.total_cop)) })
+    const receipt: ReceiptData = {
+      title: rTitle || undefined,
+      invoiceNumber: `PRESUPUESTO ${q.quote_number}`,
+      dateText: format(new Date(q.created_at), 'dd/MM/yyyy HH:mm'),
+      customerName: q.customer_name || undefined,
+      items: (q.items ?? []).map((item) => ({
+        name: item.product_name,
+        qty: String(item.quantity),
+        unitPrice: `$${item.unit_price.toFixed(2)}`,
+        total: `$${item.subtotal.toFixed(2)}`
+      })),
+      totalText: `$${q.total_usd.toFixed(2)}`,
+      footerTitle: 'No es factura. Valido como presupuesto.',
+      paymentLines: lines,
+      thanks: undefined
+    }
+    const res = await shareReceiptToWhatsApp(receipt, `Presupuesto ${q.quote_number}`)
+    if (!res.ok && res.error) showNotification(`Error al compartir: ${res.error}`)
+  }
+
+  async function shareInvoiceWhatsApp(): Promise<void> {
+    if (!selectedInvoice) return
+    const inv = selectedInvoice
+    const paid = getPaidCurrency(inv)
+    const fmt = (usd: number): string => plainAmountIn(usd, paid, inv.rate_ves, inv.rate_cop)
+    const settings = await window.api.getAllSettings()
+    const rTitle = (settings.receipt_title || '').trim()
+    const methodLabel =
+      inv.payment_method === 'mixed'
+        ? 'Mixto'
+        : paymentLabels[inv.payment_method] || inv.payment_method
+    const receipt: ReceiptData = {
+      title: rTitle || undefined,
+      invoiceNumber: inv.invoice_number,
+      dateText: format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm'),
+      customerName: inv.customer_name || undefined,
+      items: (inv.items ?? []).map((item) => ({
+        name: item.product_name,
+        qty: String(item.quantity),
+        unitPrice: fmt(item.unit_price),
+        total: fmt(item.subtotal)
+      })),
+      totalText: fmt(inv.total_usd),
+      footerTitle: `Pago: ${methodLabel}`,
+      paymentLines: [],
+      thanks: 'Gracias por su compra!'
+    }
+    const res = await shareReceiptToWhatsApp(receipt, `Factura ${inv.invoice_number}`)
+    if (!res.ok && res.error) showNotification(`Error al compartir: ${res.error}`)
+  }
+
   async function viewInvoice(id: number): Promise<void> {
     const inv = await window.api.getInvoiceById(id)
     setSelectedInvoice(inv)
@@ -339,49 +401,89 @@ export default function InvoicesPage(): JSX.Element {
       </div>
 
       {tab === 'invoices' && (
-        <div className="border rounded-lg overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-3 font-medium">Factura</th>
-                <th className="text-left p-3 font-medium">Fecha</th>
-                <th className="text-left p-3 font-medium">Cliente</th>
-                <th className="text-right p-3 font-medium">Total USD</th>
-                <th className="text-center p-3 font-medium">Pago</th>
-                <th className="text-center p-3 font-medium">Estado</th>
-                <th className="text-center p-3 font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((inv) => (
-                <tr key={inv.id} className="border-t hover:bg-muted/30">
-                  <td className="p-3 font-mono text-xs">{inv.invoice_number}</td>
-                  <td className="p-3">{format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm')}</td>
-                  <td className="p-3">{inv.customer_name || 'Consumidor Final'}</td>
-                  <td className="p-3 text-right font-semibold">{formatUSD(inv.total_usd)}</td>
-                  <td className="p-3 text-center">{paymentLabels[inv.payment_method] || inv.payment_method}</td>
-                  <td className="p-3 text-center">
-                    <Badge variant={inv.status === 'completed' ? 'default' : 'destructive'}>
-                      {inv.status === 'completed' ? 'Completada' : 'Anulada'}
-                    </Badge>
-                  </td>
-                  <td className="p-3 text-center">
-                    <Button variant="ghost" size="icon" onClick={() => viewInvoice(inv.id)}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {invoices.length === 0 && (
+        <>
+          <div className="border rounded-lg overflow-x-auto hidden landscape:block">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                    No hay facturas en el periodo seleccionado.
-                  </td>
+                  <th className="text-left p-3 font-medium">Factura</th>
+                  <th className="text-left p-3 font-medium">Fecha</th>
+                  <th className="text-left p-3 font-medium">Cliente</th>
+                  <th className="text-right p-3 font-medium">Total USD</th>
+                  <th className="text-center p-3 font-medium">Pago</th>
+                  <th className="text-center p-3 font-medium">Estado</th>
+                  <th className="text-center p-3 font-medium">Acciones</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {invoices.map((inv) => (
+                  <tr key={inv.id} className="border-t hover:bg-muted/30">
+                    <td className="p-3 font-mono text-xs">{inv.invoice_number}</td>
+                    <td className="p-3">{format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm')}</td>
+                    <td className="p-3">{inv.customer_name || 'Consumidor Final'}</td>
+                    <td className="p-3 text-right font-semibold">{formatUSD(inv.total_usd)}</td>
+                    <td className="p-3 text-center">{paymentLabels[inv.payment_method] || inv.payment_method}</td>
+                    <td className="p-3 text-center">
+                      <Badge variant={inv.status === 'completed' ? 'default' : 'destructive'}>
+                        {inv.status === 'completed' ? 'Completada' : 'Anulada'}
+                      </Badge>
+                    </td>
+                    <td className="p-3 text-center">
+                      <Button variant="ghost" size="icon" onClick={() => viewInvoice(inv.id)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+                {invoices.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                      No hay facturas en el periodo seleccionado.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="landscape:hidden space-y-2">
+            {invoices.map((inv) => (
+              <div key={inv.id} className="border rounded-lg p-3 space-y-2">
+                <div className="flex justify-between items-start gap-2">
+                  <span className="font-medium font-mono text-xs">{inv.invoice_number}</span>
+                  <span className="font-semibold">{formatUSD(inv.total_usd)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Fecha</span>
+                  <span className="font-medium text-foreground">{format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm')}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Cliente</span>
+                  <span className="font-medium text-foreground">{inv.customer_name || 'Consumidor Final'}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Pago</span>
+                  <span className="font-medium text-foreground">{paymentLabels[inv.payment_method] || inv.payment_method}</span>
+                </div>
+                <div className="flex justify-between text-xs items-center">
+                  <span className="text-muted-foreground">Estado</span>
+                  <Badge variant={inv.status === 'completed' ? 'default' : 'destructive'}>
+                    {inv.status === 'completed' ? 'Completada' : 'Anulada'}
+                  </Badge>
+                </div>
+                <div className="flex justify-end gap-1 pt-1 border-t">
+                  <Button variant="ghost" size="icon" onClick={() => viewInvoice(inv.id)}>
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {invoices.length === 0 && (
+              <div className="p-8 text-center text-muted-foreground text-sm">
+                No hay facturas en el periodo seleccionado.
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {tab === 'invoices' && invoiceTotal > PAGE_SIZE && (
@@ -414,64 +516,115 @@ export default function InvoicesPage(): JSX.Element {
       )}
 
       {tab === 'quotes' && (
-        <div className="border rounded-lg overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left p-3 font-medium">Presupuesto</th>
-                <th className="text-left p-3 font-medium">Fecha</th>
-                <th className="text-left p-3 font-medium">Cliente</th>
-                <th className="text-right p-3 font-medium">Total USD</th>
-                <th className="text-center p-3 font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {quotes.map((q) => (
-                <tr key={q.id} className="border-t hover:bg-muted/30">
-                  <td className="p-3 font-mono text-xs">{q.quote_number}</td>
-                  <td className="p-3">{format(new Date(q.created_at), 'dd/MM/yyyy HH:mm')}</td>
-                  <td className="p-3">{q.customer_name || 'Sin cliente'}</td>
-                  <td className="p-3 text-right font-semibold">{formatUSD(q.total_usd)}</td>
-                  <td className="p-3">
-                    <div className="flex gap-1 justify-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Ver detalle"
-                        onClick={() => viewQuote(q.id)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Pasar al carrito"
-                        onClick={() => convertQuoteToCart(q.id)}
-                      >
-                        <ShoppingCart className="h-4 w-4 text-blue-500" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Eliminar"
-                        onClick={() => deleteQuote(q.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {quotes.length === 0 && (
+        <>
+          <div className="border rounded-lg overflow-x-auto hidden landscape:block">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                    No hay presupuestos en el periodo seleccionado.
-                  </td>
+                  <th className="text-left p-3 font-medium">Presupuesto</th>
+                  <th className="text-left p-3 font-medium">Fecha</th>
+                  <th className="text-left p-3 font-medium">Cliente</th>
+                  <th className="text-right p-3 font-medium">Total USD</th>
+                  <th className="text-center p-3 font-medium">Acciones</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {quotes.map((q) => (
+                  <tr key={q.id} className="border-t hover:bg-muted/30">
+                    <td className="p-3 font-mono text-xs">{q.quote_number}</td>
+                    <td className="p-3">{format(new Date(q.created_at), 'dd/MM/yyyy HH:mm')}</td>
+                    <td className="p-3">{q.customer_name || 'Sin cliente'}</td>
+                    <td className="p-3 text-right font-semibold">{formatUSD(q.total_usd)}</td>
+                    <td className="p-3">
+                      <div className="flex gap-1 justify-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Ver detalle"
+                          onClick={() => viewQuote(q.id)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Pasar al carrito"
+                          onClick={() => convertQuoteToCart(q.id)}
+                        >
+                          <ShoppingCart className="h-4 w-4 text-blue-500" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Eliminar"
+                          onClick={() => deleteQuote(q.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {quotes.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                      No hay presupuestos en el periodo seleccionado.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="landscape:hidden space-y-2">
+            {quotes.map((q) => (
+              <div key={q.id} className="border rounded-lg p-3 space-y-2">
+                <div className="flex justify-between items-start gap-2">
+                  <span className="font-medium font-mono text-xs">{q.quote_number}</span>
+                  <span className="font-semibold">{formatUSD(q.total_usd)}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Fecha</span>
+                  <span className="font-medium text-foreground">{format(new Date(q.created_at), 'dd/MM/yyyy HH:mm')}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Cliente</span>
+                  <span className="font-medium text-foreground">{q.customer_name || 'Sin cliente'}</span>
+                </div>
+                <div className="flex justify-end gap-1 pt-1 border-t">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Ver detalle"
+                    onClick={() => viewQuote(q.id)}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Pasar al carrito"
+                    onClick={() => convertQuoteToCart(q.id)}
+                  >
+                    <ShoppingCart className="h-4 w-4 text-blue-500" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Eliminar"
+                    onClick={() => deleteQuote(q.id)}
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {quotes.length === 0 && (
+              <div className="p-8 text-center text-muted-foreground text-sm">
+                No hay presupuestos en el periodo seleccionado.
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {/* Invoice Detail Dialog */}
@@ -513,7 +666,7 @@ export default function InvoicesPage(): JSX.Element {
                 </div>
               </div>
 
-              <div className="border rounded overflow-x-auto">
+              <div className="border rounded overflow-x-auto hidden landscape:block">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
@@ -534,6 +687,24 @@ export default function InvoicesPage(): JSX.Element {
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="landscape:hidden space-y-2">
+                {selectedInvoice.items?.map((item, i) => (
+                  <div key={i} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="font-medium">{item.product_name}</span>
+                      <span className="font-semibold">{formatUSD(item.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Cant</span>
+                      <span className="font-medium text-foreground">{item.quantity}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">P.U.</span>
+                      <span className="font-medium text-foreground">{formatUSD(item.unit_price)}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               <Separator />
@@ -576,7 +747,16 @@ export default function InvoicesPage(): JSX.Element {
                 )
               })()}
 
-              <div className="flex gap-2 justify-end">
+              <div className="flex flex-wrap gap-2 justify-end">
+                {isMobileApp() && (
+                  <Button
+                    onClick={shareInvoiceWhatsApp}
+                    className="bg-green-600 text-white hover:bg-green-700"
+                  >
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    WhatsApp
+                  </Button>
+                )}
                 <Button variant="outline" onClick={printInvoice}>
                   <Printer className="mr-2 h-4 w-4" />
                   Imprimir
@@ -615,7 +795,7 @@ export default function InvoicesPage(): JSX.Element {
                 </div>
               </div>
 
-              <div className="border rounded overflow-x-auto">
+              <div className="border rounded overflow-x-auto hidden landscape:block">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
@@ -636,6 +816,24 @@ export default function InvoicesPage(): JSX.Element {
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="landscape:hidden space-y-2">
+                {selectedQuote.items?.map((item, i) => (
+                  <div key={i} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex justify-between items-start gap-2">
+                      <span className="font-medium">{item.product_name}</span>
+                      <span className="font-semibold">{formatUSD(item.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Cant</span>
+                      <span className="font-medium text-foreground">{item.quantity}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">P.U.</span>
+                      <span className="font-medium text-foreground">{formatUSD(item.unit_price)}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {selectedQuote.notes && (
@@ -672,6 +870,15 @@ export default function InvoicesPage(): JSX.Element {
               </div>
 
               <div className="flex flex-wrap gap-2 justify-end">
+                {isMobileApp() && (
+                  <Button
+                    onClick={shareQuoteWhatsApp}
+                    className="bg-green-600 text-white hover:bg-green-700"
+                  >
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    WhatsApp
+                  </Button>
+                )}
                 <Button variant="outline" onClick={printQuote}>
                   <Printer className="mr-2 h-4 w-4" />
                   Imprimir

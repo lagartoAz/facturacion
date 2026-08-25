@@ -37,6 +37,13 @@
         </provider>
     </application>
 
+    <!-- Package visibility (Android 11+) so we can send invoices/quotes
+         straight to WhatsApp via an explicit intent (WhatsAppSharePlugin). -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
+    </queries>
+
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
