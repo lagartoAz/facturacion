@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -15,6 +15,7 @@ import {
   PanelLeftOpen
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isMobileApp } from '@/lib/product-image'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -41,6 +42,7 @@ export function AppSidebar({ drawerOpen = false, onNavigate }: AppSidebarProps):
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('sidebar_collapsed') === 'true'
   )
+  const navigate = useNavigate()
 
   const toggleCollapsed = (): void => {
     setCollapsed((prev) => {
@@ -101,7 +103,13 @@ export function AppSidebar({ drawerOpen = false, onNavigate }: AppSidebarProps):
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">
         <button
           onClick={() => {
-            window.api.openPosWindow()
+            // On mobile there is no secondary window: navigate to the in-app POS
+            // view instead (same screen the Dashboard "Nueva Venta" button opens).
+            if (isMobileApp()) {
+              navigate('/pos')
+            } else {
+              window.api.openPosWindow()
+            }
             onNavigate?.()
           }}
           title={collapsed ? 'Punto de Venta' : undefined}

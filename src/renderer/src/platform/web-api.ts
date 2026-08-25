@@ -21,8 +21,9 @@ const STORE_KEY = 'facturacion.connection'
 const MODE_KEY = 'facturacion.mode'
 const PRINTER_KEY = 'facturacion.printer'
 const LOCAL_HOST = '127.0.0.1'
-// Kept in sync with package.json; shown in the network info card.
-const APP_VERSION = '1.14.1'
+// Injected from package.json at build time (see electron.vite.config.ts); shown
+// in the network info card and the Settings footer.
+const APP_VERSION = __APP_VERSION__
 
 type Mode = '' | 'server' | 'client'
 

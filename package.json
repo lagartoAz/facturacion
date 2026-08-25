@@ -1,6 +1,6 @@
 {
   "name": "facturacion",
-  "version": "1.14.1",
+  "version": "1.15.0",
   "description": "App de facturacion POS de escritorio offline",
   "type": "module",
   "main": "./out/main/index.js",
@@ -18,9 +18,11 @@
     "android:apk": "electron-vite build && cap sync android && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^6.2.0",
     "@capacitor/android": "^6.2.1",
     "@capacitor/camera": "^6.1.3",
     "@capacitor/core": "^6.2.1",
+    "@capacitor/local-notifications": "^6.1.3",
     "better-sqlite3": "^11.7.0",
     "date-fns": "^4.1.0",
     "node-sqlite3-wasm": "^0.8.60"

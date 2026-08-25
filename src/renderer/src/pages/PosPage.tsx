@@ -1,6 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import type { ReceiptData } from '../../../shared/receipt'
+import { isMobileApp } from '@/lib/product-image'
+import { scanBarcode } from '@/lib/barcode-scanner'
+import { notifyLargeSale } from '@/lib/notifications'
+import { NumericKeypad } from '@/components/NumericKeypad'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -42,7 +46,10 @@ import {
   Layers,
   Check,
   Pause,
-  Clock
+  Clock,
+  ArrowLeft,
+  Camera,
+  User
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -153,6 +160,7 @@ function getPaymentSummary(inv: CompletedInvoice): { title: string; lines: Payme
 
 export default function PosPage(): JSX.Element {
   const location = useLocation()
+  const navigate = useNavigate()
   const isStandaloneWindow = location.pathname === '/pos-window'
 
   const [cart, setCart] = useState<CartItem[]>([])
@@ -167,7 +175,7 @@ export default function PosPage(): JSX.Element {
   const [customAmount, setCustomAmount] = useState('')
   const [customNote, setCustomNote] = useState('')
   const [searchResults, setSearchResults] = useState<Product[]>([])
-  const [customers, setCustomers] = useState<{ id: number; name: string }[]>([])
+  const [customers, setCustomers] = useState<{ id: number; name: string; id_rif: string | null }[]>([])
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('cash')
@@ -185,6 +193,20 @@ export default function PosPage(): JSX.Element {
   const [pendingCartsOpen, setPendingCartsOpen] = useState(false)
   const [printBehavior, setPrintBehavior] = useState<'ask' | 'always' | 'never'>('ask')
   const barcodeInputRef = useRef<HTMLInputElement>(null)
+
+  // Android-only POS: keep the sale view clean (no OS keyboard). Product search
+  // and customer selection open dedicated full-screen views; quantities/weights
+  // are entered with the in-app numeric keypad.
+  const mobile = isMobileApp()
+  const [mobileScreen, setMobileScreen] = useState<null | 'search' | 'customer'>(null)
+  const [customerQuery, setCustomerQuery] = useState('')
+  const [keypadTarget, setKeypadTarget] = useState<
+    | { type: 'qty'; productId: number; current: number }
+    | { type: 'weight'; product: Product }
+    | null
+  >(null)
+  const [showScannerBtn, setShowScannerBtn] = useState(false)
+  const [showCustomBtn, setShowCustomBtn] = useState(true)
 
   useEffect(() => {
     loadInitialData()
@@ -204,8 +226,10 @@ export default function PosPage(): JSX.Element {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [isStandaloneWindow])
 
-  // Pressing Space always focuses the barcode input (unless already typing in a field)
+  // Pressing Space always focuses the barcode input (unless already typing in a field).
+  // Desktop only: the phone POS has no hardware keyboard and no barcode input in view.
   useEffect(() => {
+    if (mobile) return
     const handleGlobalSpace = (e: KeyboardEvent): void => {
       if (e.code !== 'Space' && e.key !== ' ') return
       const target = e.target as HTMLElement
@@ -220,7 +244,7 @@ export default function PosPage(): JSX.Element {
     }
     document.addEventListener('keydown', handleGlobalSpace)
     return () => document.removeEventListener('keydown', handleGlobalSpace)
-  }, [])
+  }, [mobile])
 
   async function loadInitialData(): Promise<void> {
     const [ratesData, customersData, pendingCartsData, settings] = await Promise.all([
@@ -235,6 +259,8 @@ export default function PosPage(): JSX.Element {
     const pas = settings.print_after_sale
     if (pas === 'always' || pas === 'never') setPrintBehavior(pas)
     else setPrintBehavior('ask')
+    setShowScannerBtn(settings.pos_mobile_show_scanner === 'true')
+    setShowCustomBtn(settings.pos_mobile_show_custom !== 'false')
   }
 
   const getRate = (currency: string): number =>
@@ -243,6 +269,12 @@ export default function PosPage(): JSX.Element {
   const addToCart = useCallback(
     (product: Product) => {
       if (product.is_by_weight) {
+        // On the phone use the in-app numeric keypad instead of a text input so
+        // the OS keyboard never appears.
+        if (mobile) {
+          setKeypadTarget({ type: 'weight', product })
+          return
+        }
         setPendingWeightProduct(product)
         setWeightInput('')
         setWeightDialogOpen(true)
@@ -250,8 +282,29 @@ export default function PosPage(): JSX.Element {
       }
       addToCartDirect(product, 1, false)
     },
-    []
+    [mobile]
   )
+
+  async function handleScanCamera(): Promise<void> {
+    const code = await scanBarcode()
+    if (!code) return
+    const product = await window.api.getProductByBarcode(code)
+    if (product) addToCart(product)
+    else showNotification(`Producto no encontrado: ${code}`)
+  }
+
+  function handleKeypadConfirm(value: string): void {
+    if (!keypadTarget) return
+    if (keypadTarget.type === 'qty') {
+      setQuantityExact(keypadTarget.productId, value)
+    } else {
+      const weight = parseFloat(value)
+      if (Number.isFinite(weight) && weight > 0) {
+        addToCartDirect(keypadTarget.product, weight, true)
+      }
+    }
+    setKeypadTarget(null)
+  }
 
   function addToCartDirect(product: Product, quantity: number, isByWeight: boolean): void {
     setCart((prev) => {
@@ -496,6 +549,9 @@ export default function PosPage(): JSX.Element {
       const fullInvoice = await window.api.getInvoiceById(invoice.id)
       setCompletedInvoice(fullInvoice)
 
+      // Phone notification for large sales (Android only; no-op on PC).
+      void notifyLargeSale(fullInvoice.total_usd, fullInvoice.invoice_number)
+
       setCart([])
       setSelectedCustomerId(null)
       setPaymentDialogOpen(false)
@@ -618,6 +674,12 @@ export default function PosPage(): JSX.Element {
       window.close()
       return
     }
+    // On the phone the POS view hides the sidebar; once the sale is done send the
+    // user to the invoice history, which restores the normal layout + sidebar.
+    if (isMobileApp()) {
+      navigate('/invoices')
+      return
+    }
     barcodeInputRef.current?.focus()
   }
 
@@ -627,18 +689,34 @@ export default function PosPage(): JSX.Element {
       <div className="flex-1 min-h-0 flex flex-col p-4 landscape:border-r order-last landscape:order-none">
         {/* Customer selector */}
         <div className="mb-4">
-          <select
-            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={selectedCustomerId ?? ''}
-            onChange={(e) => setSelectedCustomerId(e.target.value ? parseInt(e.target.value) : null)}
-          >
-            <option value="">Consumidor Final</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          {mobile ? (
+            <Button
+              variant="outline"
+              className="w-full justify-start h-11 font-normal"
+              onClick={() => {
+                setCustomerQuery('')
+                setMobileScreen('customer')
+              }}
+            >
+              <User className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">
+                {customers.find((c) => c.id === selectedCustomerId)?.name ?? 'Consumidor Final'}
+              </span>
+            </Button>
+          ) : (
+            <select
+              className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              value={selectedCustomerId ?? ''}
+              onChange={(e) => setSelectedCustomerId(e.target.value ? parseInt(e.target.value) : null)}
+            >
+              <option value="">Consumidor Final</option>
+              {customers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Cart items */}
@@ -647,7 +725,9 @@ export default function PosPage(): JSX.Element {
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <ShoppingCart className="h-12 w-12 mb-2 opacity-30" />
               <p>Carrito vacio</p>
-              <p className="text-xs">Escanea un producto para comenzar</p>
+              <p className="text-xs">
+                {mobile ? 'Toca "Buscar producto" para comenzar' : 'Escanea un producto para comenzar'}
+              </p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -681,6 +761,37 @@ export default function PosPage(): JSX.Element {
                     </span>
                   ) : item.isByWeight ? (
                     <span className="text-sm font-medium">{item.quantity.toFixed(3)} kg</span>
+                  ) : mobile ? (
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9"
+                        onClick={() => updateQuantity(item.productId, -1)}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <button
+                        className="h-9 min-w-[3rem] px-2 rounded-md border font-medium text-center"
+                        onClick={() =>
+                          setKeypadTarget({
+                            type: 'qty',
+                            productId: item.productId,
+                            current: item.quantity
+                          })
+                        }
+                      >
+                        {item.quantity}
+                      </button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9"
+                        onClick={() => updateQuantity(item.productId, 1)}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   ) : (
                     <div className="flex items-center gap-1">
                       <Button
@@ -822,7 +933,46 @@ export default function PosPage(): JSX.Element {
         </div>
       </div>
 
-      {/* Right panel - Barcode + Search */}
+      {/* Mobile action bar - opens dedicated search/scan views (keeps the sale view clean) */}
+      {mobile && (
+        <div className="w-full shrink-0 flex flex-col gap-2 p-4 border-b order-first">
+          <Button
+            size="lg"
+            className="h-12"
+            onClick={() => {
+              setSearchQuery('')
+              setSearchResults([])
+              setMobileScreen('search')
+            }}
+          >
+            <Search className="mr-2 h-5 w-5" />
+            Buscar producto
+          </Button>
+          {(showScannerBtn || showCustomBtn) && (
+            <div className="flex gap-2">
+              {showScannerBtn && (
+                <Button variant="outline" className="flex-1 h-11" onClick={handleScanCamera}>
+                  <Camera className="mr-2 h-4 w-4" />
+                  Escanear
+                </Button>
+              )}
+              {showCustomBtn && (
+                <Button
+                  variant="outline"
+                  className="flex-1 h-11"
+                  onClick={() => setCustomDialogOpen(true)}
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Personalizado
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Right panel - Barcode + Search (desktop) */}
+      {!mobile && (
       <div className="w-full landscape:w-80 shrink-0 flex flex-col p-4 border-b landscape:border-b-0 order-first landscape:order-none">
         {/* Barcode input */}
         <Card className="mb-4">
@@ -904,6 +1054,7 @@ export default function PosPage(): JSX.Element {
           )}
         </div>
       </div>
+      )}
 
       {/* Payment Dialog */}
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
@@ -1426,6 +1577,146 @@ export default function PosPage(): JSX.Element {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Mobile: dedicated product search view (searches by name AND barcode) */}
+      {mobile && mobileScreen === 'search' && (
+        <div className="fixed inset-0 z-50 bg-background flex flex-col">
+          <div className="flex items-center gap-2 p-3 border-b">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              onClick={() => setMobileScreen(null)}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                autoFocus
+                className="pl-9 h-11"
+                placeholder="Buscar por nombre o codigo..."
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto p-3 space-y-1">
+            {searchQuery.length < 2 && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Escribe el nombre o el codigo del producto
+              </p>
+            )}
+            {searchResults.map((p) => (
+              <button
+                key={p.id}
+                className="w-full text-left p-3 rounded-md border hover:bg-accent transition-colors flex items-center gap-3"
+                onClick={() => {
+                  addToCart(p)
+                  setMobileScreen(null)
+                  setSearchQuery('')
+                  setSearchResults([])
+                }}
+              >
+                <ProductThumb
+                  productId={p.id}
+                  hasImage={!!p.has_image}
+                  name={p.name}
+                  className="shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{p.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Stock: {p.stock}
+                    {p.barcode && ` | ${p.barcode}`}
+                  </p>
+                </div>
+                <Badge variant="secondary" className="ml-2 shrink-0">
+                  {formatUSD(p.price_usd)}
+                  {p.is_by_weight ? '/kg' : ''}
+                </Badge>
+              </button>
+            ))}
+            {searchQuery.length >= 2 && searchResults.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No se encontraron productos
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile: dedicated customer picker (search by name / last name / cedula) */}
+      {mobile && mobileScreen === 'customer' && (
+        <div className="fixed inset-0 z-50 bg-background flex flex-col">
+          <div className="flex items-center gap-2 p-3 border-b">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              onClick={() => setMobileScreen(null)}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                autoFocus
+                className="pl-9 h-11"
+                placeholder="Nombre, apellido o cedula..."
+                value={customerQuery}
+                onChange={(e) => setCustomerQuery(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <button
+              className="w-full text-left p-4 border-b hover:bg-accent transition-colors font-medium"
+              onClick={() => {
+                setSelectedCustomerId(null)
+                setMobileScreen(null)
+              }}
+            >
+              Consumidor Final
+            </button>
+            {customers
+              .filter((c) => {
+                const q = customerQuery.trim().toLowerCase()
+                if (!q) return true
+                return (
+                  c.name.toLowerCase().includes(q) ||
+                  (c.id_rif ?? '').toLowerCase().includes(q)
+                )
+              })
+              .map((c) => (
+                <button
+                  key={c.id}
+                  className="w-full text-left p-4 border-b hover:bg-accent transition-colors flex items-center justify-between gap-3"
+                  onClick={() => {
+                    setSelectedCustomerId(c.id)
+                    setMobileScreen(null)
+                  }}
+                >
+                  <span className="truncate">{c.name}</span>
+                  {c.id_rif && (
+                    <span className="text-xs text-muted-foreground shrink-0">{c.id_rif}</span>
+                  )}
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile: in-app numeric keypad for quantities and weights */}
+      <NumericKeypad
+        open={mobile && !!keypadTarget}
+        title={keypadTarget?.type === 'weight' ? 'Peso (kg)' : 'Cantidad'}
+        subtitle={keypadTarget?.type === 'weight' ? keypadTarget.product.name : undefined}
+        initialValue={keypadTarget?.type === 'qty' ? String(keypadTarget.current) : ''}
+        allowDecimal={keypadTarget?.type === 'weight'}
+        onConfirm={handleKeypadConfirm}
+        onCancel={() => setKeypadTarget(null)}
+      />
 
       {/* Notification */}
       {notification && (

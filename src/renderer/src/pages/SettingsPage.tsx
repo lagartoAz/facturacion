@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Save, Clock, ShieldCheck, FolderOpen, HardDrive, Usb, FileSpreadsheet, Package, FileText, Upload, AlertTriangle, Database, MoveRight, Printer, RefreshCw, Keyboard, X, RotateCcw, Network, Server } from 'lucide-react'
+import { Save, Clock, ShieldCheck, FolderOpen, HardDrive, Usb, FileSpreadsheet, Package, FileText, Upload, AlertTriangle, Database, MoveRight, Printer, RefreshCw, Keyboard, X, RotateCcw, Network, Server, Sun, Moon, Smartphone } from 'lucide-react'
+import { getTheme, setTheme as applyThemeChoice, type Theme } from '@/lib/theme'
 import {
   Dialog,
   DialogContent,
@@ -66,7 +67,9 @@ const SHORTCUT_DEFS = [
   { key: 'shortcut_nav_reports',   label: 'Ir a Reportes',                             defaultKey: '' },
 ]
 
-const APP_VERSION = '1.11.0'
+// Injected from package.json at build time (see electron.vite.config.ts), so the
+// footer always matches the installed build / GitHub release on PC and Android.
+const APP_VERSION = __APP_VERSION__
 
 export default function SettingsPage(): JSX.Element {
   const [rateVes, setRateVes] = useState('')
@@ -76,6 +79,7 @@ export default function SettingsPage(): JSX.Element {
   const [businessAddress, setBusinessAddress] = useState('')
   const [businessPhone, setBusinessPhone] = useState('')
   const [saved, setSaved] = useState(false)
+  const [theme, setThemeState] = useState<Theme>(() => getTheme())
   const [currentTime, setCurrentTime] = useState(new Date())
   const [backups, setBackups] = useState<BackupEntry[]>([])
   const [backupDir, setBackupDir] = useState('')
@@ -112,6 +116,8 @@ export default function SettingsPage(): JSX.Element {
   const [receiptMargin, setReceiptMargin] = useState('4')
   const [shortcuts, setShortcuts] = useState<Record<string, string>>({})
   const [capturingKey, setCapturingKey] = useState<string | null>(null)
+  const [posShowScanner, setPosShowScanner] = useState(false)
+  const [posShowCustom, setPosShowCustom] = useState(true)
   const captureInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -423,6 +429,15 @@ export default function SettingsPage(): JSX.Element {
       sc[def.key] = settings[def.key] ?? def.defaultKey
     }
     setShortcuts(sc)
+    setPosShowScanner(settings.pos_mobile_show_scanner === 'true')
+    setPosShowCustom(settings.pos_mobile_show_custom !== 'false')
+  }
+
+  async function savePosMobile(): Promise<void> {
+    await window.api.setSetting('pos_mobile_show_scanner', posShowScanner ? 'true' : 'false')
+    await window.api.setSetting('pos_mobile_show_custom', posShowCustom ? 'true' : 'false')
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   async function saveRates(): Promise<void> {
@@ -447,11 +462,96 @@ export default function SettingsPage(): JSX.Element {
 
   const isMobileApp = !!(window as unknown as { __mobileApi?: boolean }).__mobileApi
 
+  function chooseTheme(next: Theme): void {
+    applyThemeChoice(next)
+    setThemeState(next)
+  }
+
   return (
     <div className="p-4 landscape:p-6 space-y-6 max-w-2xl">
       <h1 className="text-2xl font-bold">Configuracion</h1>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Apariencia</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Label className="mb-2 block">Tema</Label>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={theme === 'light' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => chooseTheme('light')}
+              className="flex-1"
+            >
+              <Sun className="mr-2 h-4 w-4" />
+              Claro
+            </Button>
+            <Button
+              type="button"
+              variant={theme === 'dark' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => chooseTheme('dark')}
+              className="flex-1"
+            >
+              <Moon className="mr-2 h-4 w-4" />
+              Oscuro
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {isMobileApp && <ThermalPrinterCard />}
+
+      {isMobileApp && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Smartphone className="h-5 w-5" />
+              Punto de Venta (Android)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Elige que botones aparecen en el punto de venta del telefono para mantener despejada la vista de la venta.
+            </p>
+            <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4"
+                checked={posShowScanner}
+                onChange={(e) => setPosShowScanner(e.target.checked)}
+              />
+              <div>
+                <p className="text-sm font-medium">Boton de escaner de codigo de barras</p>
+                <p className="text-xs text-muted-foreground">
+                  Muestra un boton que abre la camara para escanear codigos. Desactivalo si agregas los
+                  productos buscandolos por nombre.
+                </p>
+              </div>
+            </label>
+            <label className="flex items-start gap-3 rounded-md border p-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4"
+                checked={posShowCustom}
+                onChange={(e) => setPosShowCustom(e.target.checked)}
+              />
+              <div>
+                <p className="text-sm font-medium">Boton de ingreso personalizado</p>
+                <p className="text-xs text-muted-foreground">
+                  Permite cobrar un monto libre sin un producto (servicios, adelantos, etc.).
+                </p>
+              </div>
+            </label>
+            <Button onClick={savePosMobile} size="sm">
+              <Save className="mr-2 h-4 w-4" />
+              Guardar
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

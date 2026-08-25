@@ -16,6 +16,7 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustPan"
             android:exported="true">
 
             <intent-filter>
@@ -39,6 +40,9 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Local notifications for large sales (@capacitor/local-notifications). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Taking product photos with the camera (@capacitor/camera). -->
     <uses-permission android:name="android.permission.CAMERA" />
