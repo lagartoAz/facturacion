@@ -13,9 +13,9 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
@@ -47,19 +47,23 @@ jobs:
     # attaches the Android APK to it.
     needs: build-windows
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
           cache: npm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
       - uses: android-actions/setup-android@v3
+        with:
+          # The legacy "tools" package was removed from the SDK repo and breaks
+          # the default install; only platform-tools is needed here.
+          packages: platform-tools
 
       - name: Install dependencies
         run: npm ci
