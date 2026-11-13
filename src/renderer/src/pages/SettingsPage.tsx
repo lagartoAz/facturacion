@@ -15,6 +15,7 @@ import {
   DialogFooter
 } from '@/components/ui/dialog'
 import { format } from 'date-fns'
+import type { ReceiptData } from '../../../shared/receipt'
 
 interface BackupEntry {
   name: string
@@ -107,6 +108,8 @@ export default function SettingsPage(): JSX.Element {
   const [savingNet, setSavingNet] = useState(false)
   const [printers, setPrinters] = useState<PrinterEntry[]>([])
   const [defaultPrinter, setDefaultPrinter] = useState('')
+  const [printMode, setPrintMode] = useState<'driver' | 'escpos'>('driver')
+  const [escposWidth, setEscposWidth] = useState(32)
   const [loadingPrinters, setLoadingPrinters] = useState(false)
   const [printMessage, setPrintMessage] = useState('')
   const [printAfterSale, setPrintAfterSale] = useState<'ask' | 'always' | 'never'>('ask')
@@ -155,6 +158,8 @@ export default function SettingsPage(): JSX.Element {
       window.api.getAllSettings()
     ])
     setDefaultPrinter(cfg.defaultPrinter)
+    setPrintMode(cfg.mode === 'escpos' ? 'escpos' : 'driver')
+    setEscposWidth(cfg.width === 48 ? 48 : 32)
     const pas = settings.print_after_sale
     if (pas === 'always' || pas === 'never') setPrintAfterSale(pas)
     else setPrintAfterSale('ask')
@@ -162,6 +167,7 @@ export default function SettingsPage(): JSX.Element {
 
   async function savePrinter(): Promise<void> {
     await window.api.setDefaultPrinter(defaultPrinter || null)
+    await window.api.setPrinterMode(printMode, escposWidth)
     await window.api.setSetting('print_after_sale', printAfterSale)
     const fs = parseInt(receiptFontSize)
     await window.api.setSetting('receipt_font_size', (fs >= 10 && fs <= 20 ? fs : 14).toString())
@@ -175,9 +181,21 @@ export default function SettingsPage(): JSX.Element {
 
   async function testPrint(): Promise<void> {
     setPrintMessage('')
+    // Persist the printer + mode first so the test uses the current selection.
+    await window.api.setDefaultPrinter(defaultPrinter || null)
+    await window.api.setPrinterMode(printMode, escposWidth)
     const fs = parseInt(receiptFontSize) || 14
     const fw = receiptFontWeight || '700'
     const rm = parseInt(receiptMargin) || 4
+    const sampleReceipt: ReceiptData = {
+      title: receiptTitle.trim() || undefined,
+      invoiceNumber: 'PRUEBA DE IMPRESION',
+      dateText: format(new Date(), 'dd/MM/yyyy HH:mm'),
+      items: [{ name: 'Producto de prueba', qty: '1', unitPrice: '1.00', total: '1.00' }],
+      totalText: '1.00',
+      paymentLines: [{ label: '', amount: '1.00' }],
+      thanks: 'Si lees esto, la impresion funciona correctamente.'
+    }
     const html = `
       <html><head><title>Prueba</title>
       <style>
@@ -198,7 +216,7 @@ export default function SettingsPage(): JSX.Element {
         <div class="center">Si lees esto, la impresion funciona correctamente.</div>
       </body></html>
     `
-    const result = await window.api.printReceipt(html)
+    const result = await window.api.printReceipt(html, sampleReceipt)
     if (result.success) setPrintMessage('Enviado a la impresora')
     else setPrintMessage(`Error: ${result.error ?? 'desconocido'}`)
     setTimeout(() => setPrintMessage(''), 5000)
@@ -682,6 +700,47 @@ export default function SettingsPage(): JSX.Element {
             <p className="text-xs text-muted-foreground">
               Con una impresora predeterminada configurada, al imprimir se enviara directamente sin mostrar dialogo del sistema.
             </p>
+          )}
+          {!isMobileApp && (
+            <div className="space-y-2">
+              <Label>Modo de impresion</Label>
+              <div className="space-y-2">
+                {([
+                  ['driver', 'Driver de Windows (normal)', 'Para impresoras laser o de inyeccion. Imprime el recibo como pagina a traves del driver del sistema.'],
+                  ['escpos', 'Termica ESC/POS directa (recomendado 58mm USB)', 'Envia los datos directo a la impresora termica, sin pasar por el driver. Evita los simbolos raros y es inmediato.'],
+                ] as const).map(([val, label, desc]) => (
+                  <label
+                    key={val}
+                    className={`flex items-start gap-3 rounded-md border p-3 cursor-pointer transition-colors ${printMode === val ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                    onClick={() => setPrintMode(val)}
+                  >
+                    <span className={`mt-0.5 h-4 w-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${printMode === val ? 'border-primary' : 'border-muted-foreground'}`}>
+                      {printMode === val && <span className="h-2 w-2 rounded-full bg-primary" />}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium">{label}</p>
+                      <p className="text-xs text-muted-foreground">{desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              {printMode === 'escpos' && (
+                <div className="space-y-1 pt-1">
+                  <Label className="text-xs">Ancho de papel</Label>
+                  <select
+                    className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={escposWidth}
+                    onChange={(e) => setEscposWidth(parseInt(e.target.value) === 48 ? 48 : 32)}
+                  >
+                    <option value={32}>58 mm</option>
+                    <option value={48}>80 mm</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Requiere seleccionar arriba la impresora termica instalada en Windows.
+                  </p>
+                </div>
+              )}
+            </div>
           )}
           <div className="space-y-2">
             <p className="text-sm font-medium">Comportamiento al finalizar una venta</p>

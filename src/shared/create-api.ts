@@ -209,8 +209,17 @@ export function createApi(invoke: Invoke) {
     setDefaultPrinter: (deviceName: string | null) =>
       invoke('printer:setDefault', deviceName) as Promise<void>,
     setSilentPrint: (silent: boolean) => invoke('printer:setSilent', silent) as Promise<void>,
+    // ESC/POS direct printing (desktop): 'escpos' sends raw bytes to the printer
+    // queue (clean thermal output); 'driver' keeps the Windows GDI path.
+    setPrinterMode: (mode: 'driver' | 'escpos', width: number) =>
+      invoke('printer:setMode', mode, width) as Promise<void>,
     getPrinterConfig: () =>
-      invoke('printer:getConfig') as Promise<{ defaultPrinter: string; silent: boolean }>,
+      invoke('printer:getConfig') as Promise<{
+        defaultPrinter: string
+        silent: boolean
+        mode: 'driver' | 'escpos'
+        width: number
+      }>,
 
     // Thermal printer config (Android). Not handled on desktop.
     getThermalPrinter: () => invoke('printer:getThermal') as Promise<ThermalConfig>,

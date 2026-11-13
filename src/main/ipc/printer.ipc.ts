@@ -1,6 +1,8 @@
 import { BrowserWindow, ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import { SettingsService } from '../services/settings.service'
+import { printReceiptJob } from '../services/receipt-print.service'
+import type { ReceiptData } from '../../shared/receipt'
 
 interface PrinterEntry {
   name: string
@@ -8,6 +10,14 @@ interface PrinterEntry {
   description: string
   status: number
   isDefault: boolean
+}
+
+function readMode(settings: SettingsService): 'driver' | 'escpos' {
+  return settings.get('print_mode') === 'escpos' ? 'escpos' : 'driver'
+}
+
+function readWidth(settings: SettingsService): number {
+  return settings.get('escpos_width') === '48' ? 48 : 32
 }
 
 export function registerPrinterHandlers(db: Database.Database): void {
@@ -35,62 +45,14 @@ export function registerPrinterHandlers(db: Database.Database): void {
     'printer:print',
     async (
       _event,
-      html: string
+      html: string,
+      receipt?: ReceiptData
     ): Promise<{ success: boolean; error?: string }> => {
-      // Warn clearly if there is no printer installed, so printing an invoice
-      // doesn't silently do nothing.
-      const listWin = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-      if (listWin) {
-        try {
-          const printers = await listWin.webContents.getPrintersAsync()
-          if (printers.length === 0) {
-            return {
-              success: false,
-              error:
-                'No hay ninguna impresora instalada en este equipo. Conecta o instala una impresora en Windows para imprimir facturas.'
-            }
-          }
-        } catch {
-          // ignore and try to print anyway
-        }
-      }
-
-      const defaultPrinter = settings.get('default_printer')
-      const silent = settings.get('print_silent') === '1'
-
-      const printWindow = new BrowserWindow({
-        show: false,
-        webPreferences: { sandbox: true, contextIsolation: true }
+      return printReceiptJob(html, receipt, {
+        printerName: settings.get('default_printer') ?? '',
+        mode: readMode(settings),
+        width: readWidth(settings)
       })
-
-      try {
-        await printWindow.loadURL(
-          'data:text/html;charset=utf-8,' + encodeURIComponent(html)
-        )
-
-        const result = await new Promise<{ success: boolean; error?: string }>(
-          (resolve) => {
-            const options: Electron.WebContentsPrintOptions = {
-              silent: !!defaultPrinter,
-              printBackground: true,
-              margins: { marginType: 'none' }
-            }
-            if (defaultPrinter) options.deviceName = defaultPrinter
-
-            printWindow.webContents.print(options, (success, failureReason) => {
-              if (success) resolve({ success: true })
-              else if (failureReason === 'cancelled')
-                resolve({ success: true })
-              else resolve({ success: false, error: failureReason })
-            })
-          }
-        )
-        return result
-      } catch (err) {
-        return { success: false, error: (err as Error).message }
-      } finally {
-        if (!printWindow.isDestroyed()) printWindow.close()
-      }
     }
   )
 
@@ -106,10 +68,20 @@ export function registerPrinterHandlers(db: Database.Database): void {
   })
 
   ipcMain.handle(
+    'printer:setMode',
+    (_event, mode: 'driver' | 'escpos', width: number): void => {
+      settings.set('print_mode', mode === 'escpos' ? 'escpos' : 'driver')
+      settings.set('escpos_width', width === 48 ? '48' : '32')
+    }
+  )
+
+  ipcMain.handle(
     'printer:getConfig',
-    (): { defaultPrinter: string; silent: boolean } => ({
+    (): { defaultPrinter: string; silent: boolean; mode: 'driver' | 'escpos'; width: number } => ({
       defaultPrinter: settings.get('default_printer') ?? '',
-      silent: settings.get('print_silent') === '1'
+      silent: settings.get('print_silent') === '1',
+      mode: readMode(settings),
+      width: readWidth(settings)
     })
   )
 }

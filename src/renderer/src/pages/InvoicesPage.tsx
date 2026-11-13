@@ -250,7 +250,25 @@ export default function InvoicesPage(): JSX.Element {
         <div class="center label">No es factura. Valido como presupuesto.</div>
       </body></html>
     `
-    const result = await window.api.printReceipt(html)
+    const paymentLines: { label: string; amount: string }[] = []
+    if (q.total_ves) paymentLines.push({ label: 'Bs.', amount: q.total_ves.toFixed(2) })
+    if (q.total_cop) paymentLines.push({ label: 'COP', amount: String(Math.round(q.total_cop)) })
+    const receipt: ReceiptData = {
+      title: rTitle || undefined,
+      invoiceNumber: `PRESUPUESTO ${q.quote_number}`,
+      dateText: format(new Date(q.created_at), 'dd/MM/yyyy HH:mm'),
+      customerName: q.customer_name || undefined,
+      items: (q.items ?? []).map((item) => ({
+        name: item.product_name,
+        qty: String(item.quantity),
+        unitPrice: `$${item.unit_price.toFixed(2)}`,
+        total: `$${item.subtotal.toFixed(2)}`
+      })),
+      totalText: `$${q.total_usd.toFixed(2)}`,
+      paymentLines,
+      thanks: 'No es factura. Valido como presupuesto.'
+    }
+    const result = await window.api.printReceipt(html, receipt)
     if (!result.success && result.error) {
       showNotification(`Error al imprimir: ${result.error}`)
     }
@@ -353,6 +371,14 @@ export default function InvoicesPage(): JSX.Element {
     const rTitle = (settings.receipt_title || '').trim()
     const rm = parseInt(settings.receipt_margin) || 4
 
+    const paymentText =
+      inv.payment_method === 'mixed' && inv.payments
+        ? 'Mixto - ' +
+          inv.payments
+            .map((p: { method: string; amount: number }) => `${p.method}: $${p.amount.toFixed(2)}`)
+            .join(', ')
+        : paymentLabels[inv.payment_method] || inv.payment_method
+
     const html = `
       <html><head><title>${inv.invoice_number}</title>
       <style>
@@ -378,12 +404,28 @@ export default function InvoicesPage(): JSX.Element {
         <div class="divider"></div>
         <div class="right bold" style="font-size:${fs + 1}px">TOTAL: ${totalDisplay}</div>
         <div class="divider"></div>
-        <div class="center">Pago: ${inv.payment_method === 'mixed' && inv.payments ? 'Mixto - ' + inv.payments.map((p: { method: string; amount: number }) => `${p.method}: $${p.amount.toFixed(2)}`).join(', ') : (paymentLabels[inv.payment_method] || inv.payment_method)}</div>
+        <div class="center">Pago: ${paymentText}</div>
         <div class="center" style="margin-top:8px">Gracias por su compra!</div>
       </body></html>
     `
 
-    const result = await window.api.printReceipt(html)
+    const receipt: ReceiptData = {
+      title: rTitle || undefined,
+      invoiceNumber: inv.invoice_number,
+      dateText: format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm'),
+      customerName: inv.customer_name || undefined,
+      items: (inv.items ?? []).map((item) => ({
+        name: item.product_name,
+        qty: String(item.quantity),
+        unitPrice: fmt(item.unit_price),
+        total: fmt(item.subtotal)
+      })),
+      totalText: totalDisplay,
+      paymentLines: [{ label: 'Pago', amount: paymentText }],
+      thanks: 'Gracias por su compra!'
+    }
+
+    const result = await window.api.printReceipt(html, receipt)
     if (!result.success && result.error) {
       showNotification(`Error al imprimir: ${result.error}`)
     }

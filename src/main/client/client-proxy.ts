@@ -4,6 +4,8 @@ import { join } from 'path'
 import { PROXIED_CHANNELS, SERVER_ONLY_CHANNELS } from '../shared/channels'
 import { getNetworkConfig, setNetworkConfig, DEFAULT_PORT } from '../services/network-config.service'
 import { localGet, localSet } from './local-store'
+import { printReceiptJob } from '../services/receipt-print.service'
+import type { ReceiptData } from '../../shared/receipt'
 
 interface Target {
   host: string
@@ -128,48 +130,12 @@ export function registerClientHandlers(): void {
     }
   })
 
-  ipcMain.handle('printer:print', async (_event, html: string) => {
-    // Warn clearly if this PC has no printer, so it doesn't look like "nothing
-    // happened" when trying to print an invoice.
-    const listWin = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
-    if (listWin) {
-      try {
-        const printers = await listWin.webContents.getPrintersAsync()
-        if (printers.length === 0) {
-          return {
-            success: false,
-            error:
-              'No hay ninguna impresora instalada en este equipo. Conecta o instala una impresora en Windows para imprimir facturas.'
-          }
-        }
-      } catch {
-        // ignore and try to print anyway
-      }
-    }
-    const defaultPrinter = localGet('default_printer') || ''
-    const printWindow = new BrowserWindow({
-      show: false,
-      webPreferences: { sandbox: true, contextIsolation: true }
+  ipcMain.handle('printer:print', async (_event, html: string, receipt?: ReceiptData) => {
+    return printReceiptJob(html, receipt, {
+      printerName: localGet('default_printer') || '',
+      mode: localGet('print_mode') === 'escpos' ? 'escpos' : 'driver',
+      width: localGet('escpos_width') === '48' ? 48 : 32
     })
-    try {
-      await printWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-      return await new Promise<{ success: boolean; error?: string }>((resolve) => {
-        const options: Electron.WebContentsPrintOptions = {
-          silent: !!defaultPrinter,
-          printBackground: true,
-          margins: { marginType: 'none' }
-        }
-        if (defaultPrinter) options.deviceName = defaultPrinter
-        printWindow.webContents.print(options, (success, failureReason) => {
-          if (success || failureReason === 'cancelled') resolve({ success: true })
-          else resolve({ success: false, error: failureReason })
-        })
-      })
-    } catch (err) {
-      return { success: false, error: (err as Error).message }
-    } finally {
-      if (!printWindow.isDestroyed()) printWindow.close()
-    }
   })
 
   ipcMain.handle('printer:setDefault', (_event, deviceName: string | null) => {
@@ -178,9 +144,15 @@ export function registerClientHandlers(): void {
   ipcMain.handle('printer:setSilent', (_event, silent: boolean) => {
     localSet('print_silent', silent ? '1' : '0')
   })
+  ipcMain.handle('printer:setMode', (_event, mode: 'driver' | 'escpos', width: number) => {
+    localSet('print_mode', mode === 'escpos' ? 'escpos' : 'driver')
+    localSet('escpos_width', width === 48 ? '48' : '32')
+  })
   ipcMain.handle('printer:getConfig', () => ({
     defaultPrinter: localGet('default_printer') ?? '',
-    silent: localGet('print_silent') === '1'
+    silent: localGet('print_silent') === '1',
+    mode: localGet('print_mode') === 'escpos' ? 'escpos' : 'driver',
+    width: localGet('escpos_width') === '48' ? 48 : 32
   }))
 
   // Window + USB (local, no DB needed).

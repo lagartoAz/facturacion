@@ -316,11 +316,13 @@ const localHandlers: Record<string, (args: unknown[]) => Promise<unknown> | unkn
     }
   },
 
-  // Desktop-oriented printer channels are inert on Android.
+  // Desktop-oriented printer channels are inert on Android (thermal config lives
+  // in ThermalPrinterCard / printer:getThermal instead).
   'printer:list': () => [],
   'printer:setDefault': () => undefined,
   'printer:setSilent': () => undefined,
-  'printer:getConfig': () => ({ defaultPrinter: '', silent: false })
+  'printer:setMode': () => undefined,
+  'printer:getConfig': () => ({ defaultPrinter: '', silent: false, mode: 'driver', width: 32 })
 }
 
 async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
