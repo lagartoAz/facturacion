@@ -8,10 +8,19 @@ export interface PurchaseItemInput {
 }
 
 export interface CreatePurchaseDTO {
-  supplierId: number
+  // Optional: a general "ingreso de productos" from the Products page has no
+  // supplier; a restock launched from a supplier passes its id.
+  supplierId?: number | null
   reference?: string
   notes?: string
   items: PurchaseItemInput[]
+}
+
+export interface PurchaseFilters {
+  from?: string
+  to?: string
+  page?: number
+  limit?: number
 }
 
 export interface Purchase {
@@ -64,9 +73,11 @@ export class PurchaseService {
 
   create(data: CreatePurchaseDTO): Purchase {
     const tx = this.db.transaction(() => {
-      const supplier = this.db
-        .prepare('SELECT name FROM suppliers WHERE id = ?')
-        .get(data.supplierId) as { name: string } | undefined
+      const supplier = data.supplierId
+        ? (this.db.prepare('SELECT name FROM suppliers WHERE id = ?').get(data.supplierId) as
+            | { name: string }
+            | undefined)
+        : undefined
 
       const items = data.items.filter((i) => i.quantity > 0)
       const totalCost = items.reduce((s, i) => s + i.quantity * (i.unitCost ?? 0), 0)
@@ -78,7 +89,7 @@ export class PurchaseService {
            VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`
         )
         .run(
-          data.supplierId,
+          data.supplierId ?? null,
           supplier?.name ?? null,
           data.reference || null,
           data.notes || null,
@@ -117,6 +128,41 @@ export class PurchaseService {
     })
 
     return tx()
+  }
+
+  // All intakes (facturas de ingreso), newest first, with optional date range
+  // and pagination — used by the Invoices page "Ingresos" tab.
+  getAll(filters?: PurchaseFilters): Purchase[] {
+    let query = 'SELECT * FROM purchases WHERE 1=1'
+    const params: unknown[] = []
+    if (filters?.from) {
+      query += ' AND created_at >= ?'
+      params.push(filters.from)
+    }
+    if (filters?.to) {
+      query += ' AND created_at <= ?'
+      params.push(filters.to + ' 23:59:59')
+    }
+    query += ' ORDER BY created_at DESC, id DESC'
+    const limit = filters?.limit ?? 20
+    const page = filters?.page ?? 1
+    query += ' LIMIT ? OFFSET ?'
+    params.push(limit, (page - 1) * limit)
+    return this.db.prepare(query).all(...params) as Purchase[]
+  }
+
+  count(filters?: PurchaseFilters): number {
+    let query = 'SELECT COUNT(*) as n FROM purchases WHERE 1=1'
+    const params: unknown[] = []
+    if (filters?.from) {
+      query += ' AND created_at >= ?'
+      params.push(filters.from)
+    }
+    if (filters?.to) {
+      query += ' AND created_at <= ?'
+      params.push(filters.to + ' 23:59:59')
+    }
+    return (this.db.prepare(query).get(...params) as { n: number }).n
   }
 
   getBySupplier(supplierId: number): Purchase[] {

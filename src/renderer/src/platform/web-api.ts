@@ -246,6 +246,19 @@ const localHandlers: Record<string, (args: unknown[]) => Promise<unknown> | unkn
     }
   },
   'net:clientStatus': () => ({ connected }),
+  // Fast reconnect to the last saved server (host + token) before scanning the
+  // LAN, so a returning terminal re-attaches without retyping the password.
+  'net:autoReconnect': async () => {
+    if (!conn?.host) return { ok: false }
+    try {
+      await testConnection(conn.host, conn.port, conn.token)
+      connected = true
+      return { ok: true }
+    } catch {
+      connected = false
+      return { ok: false }
+    }
+  },
   'net:setServerConfig': ([patch]) => {
     const p = (patch ?? {}) as Partial<Conn>
     conn = {

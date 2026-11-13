@@ -14,7 +14,8 @@ import { Separator } from '@/components/ui/separator'
 import { formatUSD } from '@/lib/currency'
 import { ProductThumb } from '@/components/ProductThumb'
 import { getProductImageUrl, invalidateProductImage, prepareProductImage, capturePhoto, isMobileApp } from '@/lib/product-image'
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, Camera, X, BarChart3, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, ImagePlus, Camera, X, BarChart3, Trash2, ChevronLeft, ChevronRight, PackagePlus } from 'lucide-react'
+import ProductIntakeDialog from '@/components/ProductIntakeDialog'
 import {
   BarChart,
   Bar,
@@ -95,6 +96,8 @@ export default function ProductsPage(): JSX.Element {
   const [statsDialogOpen, setStatsDialogOpen] = useState(false)
   const [statsProduct, setStatsProduct] = useState<Product | null>(null)
   const [stats, setStats] = useState<ProductStats | null>(null)
+  const [intakeOpen, setIntakeOpen] = useState(false)
+  const [notification, setNotification] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   // Bumped every time the photo of the open dialog changes, so a photo still
   // loading from the database can't overwrite a newer choice.
@@ -280,10 +283,16 @@ export default function ProductsPage(): JSX.Element {
     <div className="p-4 landscape:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Productos</h1>
-        <Button onClick={openNewDialog}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo Producto
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIntakeOpen(true)}>
+            <PackagePlus className="mr-2 h-4 w-4" />
+            Ingreso de productos
+          </Button>
+          <Button onClick={openNewDialog}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nuevo Producto
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 flex-wrap">
@@ -738,6 +747,22 @@ export default function ProductsPage(): JSX.Element {
           )}
         </DialogContent>
       </Dialog>
+
+      <ProductIntakeDialog
+        open={intakeOpen}
+        onOpenChange={setIntakeOpen}
+        onSaved={(msg) => {
+          setNotification(msg)
+          setTimeout(() => setNotification(''), 3000)
+          loadProducts()
+        }}
+      />
+
+      {notification && (
+        <div className="fixed bottom-4 right-4 z-50 rounded-md bg-foreground px-4 py-2 text-sm text-background shadow-lg">
+          {notification}
+        </div>
+      )}
     </div>
   )
 }

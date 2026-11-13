@@ -240,4 +240,8 @@ export function registerClientHandlers(): void {
   )
 
   ipcMain.handle('net:clientStatus', () => ({ connected }))
+
+  // Fast reconnect to the last saved server (host + token), used before the
+  // discovery scan so a returning terminal re-attaches without retyping.
+  ipcMain.handle('net:autoReconnect', async () => ({ ok: await tryAutoConnect() }))
 }

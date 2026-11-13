@@ -10,7 +10,9 @@ export function sendToNetworkPrinter(
   ip: string,
   port: number,
   data: Uint8Array,
-  timeoutMs = 8000
+  // Fail fast: if the printer doesn't accept the job almost immediately we want
+  // the terminal to surface the retry/cancel dialog instead of hanging.
+  timeoutMs = 4000
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = new Socket()

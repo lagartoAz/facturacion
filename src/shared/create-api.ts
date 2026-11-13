@@ -72,6 +72,8 @@ export function createApi(invoke: Invoke) {
     getSupplierProducts: (supplierId: number) => invoke('purchases:supplierProducts', supplierId),
     createPurchase: (data: Record<string, unknown>) => invoke('purchases:create', data),
     getSupplierPurchases: (supplierId: number) => invoke('purchases:bySupplier', supplierId),
+    getPurchases: (filters?: Record<string, unknown>) => invoke('purchases:getAll', filters),
+    countPurchases: (filters?: Record<string, unknown>) => invoke('purchases:count', filters),
     getPurchaseById: (id: number) => invoke('purchases:getById', id),
 
     // Invoices
@@ -176,6 +178,7 @@ export function createApi(invoke: Invoke) {
     clientConnect: (host: string, token: string, port?: number) =>
       invoke('net:clientConnect', host, token, port) as Promise<{ ok: boolean; error?: string }>,
     clientStatus: () => invoke('net:clientStatus') as Promise<{ connected: boolean }>,
+    autoReconnect: () => invoke('net:autoReconnect') as Promise<{ ok: boolean }>,
 
     // Export
     exportInventory: () => invoke('export:inventory') as Promise<string | null>,

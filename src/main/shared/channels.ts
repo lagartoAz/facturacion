@@ -35,6 +35,8 @@ export const PROXIED_CHANNELS: string[] = [
   'suppliers:delete',
   'purchases:supplierProducts',
   'purchases:create',
+  'purchases:getAll',
+  'purchases:count',
   'purchases:bySupplier',
   'purchases:getById',
   'invoices:create',

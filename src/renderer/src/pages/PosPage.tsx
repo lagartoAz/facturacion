@@ -51,7 +51,8 @@ import {
   ArrowLeft,
   Camera,
   User,
-  MessageCircle
+  MessageCircle,
+  AlertTriangle
 } from 'lucide-react'
 import { format } from 'date-fns'
 
@@ -201,6 +202,14 @@ export default function PosPage(): JSX.Element {
   const [pendingCartsOpen, setPendingCartsOpen] = useState(false)
   const [printBehavior, setPrintBehavior] = useState<'ask' | 'always' | 'never'>('ask')
   const barcodeInputRef = useRef<HTMLInputElement>(null)
+
+  // Printing: one job at a time, no queue. `printingRef` blocks re-taps while a
+  // job is in flight; the resolve dialog lets the cashier retry on failure.
+  const printingRef = useRef(false)
+  const [isPrinting, setIsPrinting] = useState(false)
+  const [printErrorOpen, setPrintErrorOpen] = useState(false)
+  const [printErrorMsg, setPrintErrorMsg] = useState('')
+  const lastReceiptRef = useRef<{ html: string; receipt: ReceiptData } | null>(null)
 
   // Android-only POS: keep the sale view clean (no OS keyboard). Product search
   // and customer selection open dedicated full-screen views; quantities/weights
@@ -669,10 +678,40 @@ export default function PosPage(): JSX.Element {
       thanks: 'Gracias por su compra!'
     }
 
-    const result = await window.api.printReceipt(html, receipt)
-    if (!result.success && result.error) {
-      showNotification(`Error al imprimir: ${result.error}`)
+    await printReceiptJob(html, receipt)
+  }
+
+  // Sends exactly one receipt to the printer. Guarded so rapid taps (common on a
+  // laggy LAN) can't stack jobs into the printer's queue, which is what caused
+  // blank paper feeds and duplicate copies. No automatic retry: if it doesn't
+  // print, we cancel the job and open a resolve dialog for a manual retry.
+  async function printReceiptJob(html: string, receipt: ReceiptData): Promise<boolean> {
+    if (printingRef.current) return false
+    printingRef.current = true
+    setIsPrinting(true)
+    lastReceiptRef.current = { html, receipt }
+    try {
+      const result = await window.api.printReceipt(html, receipt)
+      if (result.success) {
+        setPrintErrorOpen(false)
+        return true
+      }
+      setPrintErrorMsg(result.error || 'No se pudo imprimir la factura.')
+      setPrintErrorOpen(true)
+      return false
+    } catch (err) {
+      setPrintErrorMsg((err as Error).message)
+      setPrintErrorOpen(true)
+      return false
+    } finally {
+      printingRef.current = false
+      setIsPrinting(false)
     }
+  }
+
+  function retryPrint(): void {
+    const last = lastReceiptRef.current
+    if (last) void printReceiptJob(last.html, last.receipt)
   }
 
   // Structured receipt for the WhatsApp PDF (same content as the printed one).
@@ -1478,10 +1517,11 @@ export default function PosPage(): JSX.Element {
                   <Button
                     variant="outline"
                     className="flex-1"
+                    disabled={isPrinting}
                     onClick={() => handlePrintInvoice()}
                   >
                     <Printer className="mr-2 h-4 w-4" />
-                    Imprimir
+                    {isPrinting ? 'Imprimiendo...' : 'Imprimir'}
                   </Button>
                   <Button variant="outline" className="flex-1" onClick={handleCloseSuccess}>
                     Continuar
@@ -1513,6 +1553,35 @@ export default function PosPage(): JSX.Element {
                 )}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Print Resolve Dialog: shown when a print job fails so the cashier can
+          fix the issue and retry a single fresh job (no queue, no auto-retry). */}
+      <Dialog open={printErrorOpen} onOpenChange={(open) => { if (!open) setPrintErrorOpen(false) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              No se imprimió la factura
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <p className="text-muted-foreground">{printErrorMsg}</p>
+            <p className="text-muted-foreground">
+              El trabajo se canceló (no quedó en cola). Revisa la impresora (papel,
+              encendido, conexión) y vuelve a intentar.
+            </p>
+          </div>
+          <DialogFooter className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setPrintErrorOpen(false)}>
+              Cancelar
+            </Button>
+            <Button className="flex-1" disabled={isPrinting} onClick={retryPrint}>
+              <Printer className="mr-2 h-4 w-4" />
+              {isPrinting ? 'Imprimiendo...' : 'Reintentar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

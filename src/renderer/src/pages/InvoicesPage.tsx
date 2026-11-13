@@ -17,7 +17,7 @@ import {
   formatAmountIn,
   plainAmountIn
 } from '@/lib/currency'
-import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react'
+import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2, ChevronLeft, ChevronRight, MessageCircle, PackagePlus } from 'lucide-react'
 import { format } from 'date-fns'
 import type { ReceiptData } from '../../../shared/receipt'
 import { shareReceiptToWhatsApp } from '@/lib/whatsapp'
@@ -69,7 +69,25 @@ interface Quote {
   items?: InvoiceItem[]
 }
 
-type Tab = 'invoices' | 'quotes'
+interface IntakeItem {
+  product_name: string
+  quantity: number
+  unit_cost: number
+  subtotal: number
+}
+
+interface Intake {
+  id: number
+  supplier_name: string | null
+  reference: string | null
+  notes: string | null
+  total_cost: number
+  total_items: number
+  created_at: string
+  items?: IntakeItem[]
+}
+
+type Tab = 'invoices' | 'quotes' | 'intakes'
 
 const PAGE_SIZE = 20
 
@@ -81,6 +99,11 @@ export default function InvoicesPage(): JSX.Element {
   const [invoiceTotal, setInvoiceTotal] = useState(0)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null)
+  const [intakes, setIntakes] = useState<Intake[]>([])
+  const [intakePage, setIntakePage] = useState(1)
+  const [intakeTotal, setIntakeTotal] = useState(0)
+  const [selectedIntake, setSelectedIntake] = useState<Intake | null>(null)
+  const [intakeDetailOpen, setIntakeDetailOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [quoteDetailOpen, setQuoteDetailOpen] = useState(false)
   const [dateFrom, setDateFrom] = useState('')
@@ -111,14 +134,31 @@ export default function InvoicesPage(): JSX.Element {
     )
   }, [dateFrom, dateTo])
 
+  const loadIntakes = useCallback(async () => {
+    const filters = {
+      from: dateFrom || undefined,
+      to: dateTo || undefined,
+      page: intakePage,
+      limit: PAGE_SIZE
+    }
+    const [data, total] = await Promise.all([
+      window.api.getPurchases(filters),
+      window.api.countPurchases({ from: dateFrom || undefined, to: dateTo || undefined })
+    ])
+    setIntakes(data as Intake[])
+    setIntakeTotal(total as number)
+  }, [dateFrom, dateTo, intakePage])
+
   useEffect(() => {
     setInvoicePage(1)
+    setIntakePage(1)
   }, [dateFrom, dateTo, tab])
 
   useEffect(() => {
     if (tab === 'invoices') void loadInvoices()
-    else void loadQuotes()
-  }, [tab, loadInvoices, loadQuotes])
+    else if (tab === 'quotes') void loadQuotes()
+    else void loadIntakes()
+  }, [tab, loadInvoices, loadQuotes, loadIntakes])
 
   function showNotification(msg: string): void {
     setNotification(msg)
@@ -129,6 +169,12 @@ export default function InvoicesPage(): JSX.Element {
     const q = await window.api.getQuoteById(id)
     setSelectedQuote(q)
     setQuoteDetailOpen(true)
+  }
+
+  async function viewIntake(id: number): Promise<void> {
+    const p = (await window.api.getPurchaseById(id)) as Intake
+    setSelectedIntake(p)
+    setIntakeDetailOpen(true)
   }
 
   async function deleteQuote(id: number): Promise<void> {
@@ -354,7 +400,7 @@ export default function InvoicesPage(): JSX.Element {
     <div className="p-4 landscape:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">
-          {tab === 'invoices' ? 'Facturas' : 'Presupuestos'}
+          {tab === 'invoices' ? 'Facturas' : tab === 'quotes' ? 'Presupuestos' : 'Ingresos'}
         </h1>
         <div className="flex gap-1 rounded-lg border p-1">
           <Button
@@ -372,6 +418,14 @@ export default function InvoicesPage(): JSX.Element {
           >
             <ClipboardList className="mr-2 h-4 w-4" />
             Presupuestos
+          </Button>
+          <Button
+            variant={tab === 'intakes' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => setTab('intakes')}
+          >
+            <PackagePlus className="mr-2 h-4 w-4" />
+            Ingresos
           </Button>
         </div>
       </div>
@@ -626,6 +680,167 @@ export default function InvoicesPage(): JSX.Element {
           </div>
         </>
       )}
+
+      {tab === 'intakes' && (
+        <>
+          <div className="border rounded-lg overflow-x-auto hidden landscape:block">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50">
+                <tr>
+                  <th className="text-left p-3 font-medium">Fecha</th>
+                  <th className="text-left p-3 font-medium">Referencia</th>
+                  <th className="text-left p-3 font-medium">Proveedor</th>
+                  <th className="text-right p-3 font-medium">Productos</th>
+                  <th className="text-right p-3 font-medium">Costo USD</th>
+                  <th className="text-center p-3 font-medium">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {intakes.map((p) => (
+                  <tr key={p.id} className="border-t hover:bg-muted/30">
+                    <td className="p-3">{format(new Date(p.created_at), 'dd/MM/yyyy HH:mm')}</td>
+                    <td className="p-3">{p.reference || '—'}</td>
+                    <td className="p-3">{p.supplier_name || 'Sin proveedor'}</td>
+                    <td className="p-3 text-right font-semibold">{p.total_items}</td>
+                    <td className="p-3 text-right">{p.total_cost > 0 ? formatUSD(p.total_cost) : '—'}</td>
+                    <td className="p-3 text-center">
+                      <Button variant="ghost" size="icon" onClick={() => viewIntake(p.id)}>
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+                {intakes.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                      No hay ingresos en el periodo seleccionado.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="landscape:hidden space-y-2">
+            {intakes.map((p) => (
+              <div key={p.id} className="border rounded-lg p-3 space-y-2">
+                <div className="flex justify-between items-start gap-2">
+                  <span className="font-medium">{format(new Date(p.created_at), 'dd/MM/yyyy HH:mm')}</span>
+                  <span className="font-semibold">{p.total_items} prod.</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Referencia</span>
+                  <span className="font-medium text-foreground">{p.reference || '—'}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Costo</span>
+                  <span className="font-medium text-foreground">{p.total_cost > 0 ? formatUSD(p.total_cost) : '—'}</span>
+                </div>
+                <div className="flex justify-end gap-1 pt-1 border-t">
+                  <Button variant="ghost" size="icon" onClick={() => viewIntake(p.id)}>
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {intakes.length === 0 && (
+              <div className="p-8 text-center text-muted-foreground text-sm">
+                No hay ingresos en el periodo seleccionado.
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {tab === 'intakes' && intakeTotal > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">
+            Mostrando {Math.min((intakePage - 1) * PAGE_SIZE + 1, intakeTotal)}–{Math.min(intakePage * PAGE_SIZE, intakeTotal)} de {intakeTotal} ingresos
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setIntakePage((p) => p - 1)}
+              disabled={intakePage <= 1}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="px-2 font-medium">
+              {intakePage} / {Math.ceil(intakeTotal / PAGE_SIZE)}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setIntakePage((p) => p + 1)}
+              disabled={intakePage * PAGE_SIZE >= intakeTotal}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Intake Detail Dialog */}
+      <Dialog open={intakeDetailOpen} onOpenChange={setIntakeDetailOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Ingreso de productos</DialogTitle>
+          </DialogHeader>
+          {selectedIntake && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 text-sm gap-2">
+                <div>
+                  <span className="text-muted-foreground">Fecha:</span>{' '}
+                  {format(new Date(selectedIntake.created_at), 'dd/MM/yyyy HH:mm')}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Proveedor:</span>{' '}
+                  {selectedIntake.supplier_name || 'Sin proveedor'}
+                </div>
+                {selectedIntake.reference && (
+                  <div>
+                    <span className="text-muted-foreground">Referencia:</span>{' '}
+                    {selectedIntake.reference}
+                  </div>
+                )}
+                {selectedIntake.notes && (
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Notas:</span> {selectedIntake.notes}
+                  </div>
+                )}
+              </div>
+
+              <div className="border rounded overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-2 font-medium">Producto</th>
+                      <th className="text-center p-2 font-medium">Cant</th>
+                      <th className="text-right p-2 font-medium">Costo U.</th>
+                      <th className="text-right p-2 font-medium">Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedIntake.items?.map((item, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="p-2">{item.product_name}</td>
+                        <td className="p-2 text-center">{item.quantity}</td>
+                        <td className="p-2 text-right">{item.unit_cost > 0 ? formatUSD(item.unit_cost) : '—'}</td>
+                        <td className="p-2 text-right">{item.subtotal > 0 ? formatUSD(item.subtotal) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-between text-sm font-semibold">
+                <span>Total ingresado: {selectedIntake.total_items} producto(s)</span>
+                {selectedIntake.total_cost > 0 && <span>{formatUSD(selectedIntake.total_cost)}</span>}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Invoice Detail Dialog */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>

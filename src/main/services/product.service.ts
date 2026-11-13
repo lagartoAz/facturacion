@@ -110,7 +110,7 @@ export class ProductService {
     let query = `
       SELECT
         COALESCE(SUM(CASE WHEN p.is_by_weight = 0 THEN p.stock ELSE 0 END), 0) as total_units,
-        COALESCE(SUM(CASE WHEN p.is_by_weight = 0 THEN (CASE WHEN p.cost_usd > 0 THEN p.cost_usd ELSE p.price_usd END) * p.stock ELSE 0 END), 0) as total_invested
+        COALESCE(SUM((CASE WHEN p.cost_usd > 0 THEN p.cost_usd ELSE p.price_usd END) * p.stock), 0) as total_invested
       FROM products p WHERE 1=1
     `
     const params: unknown[] = []
