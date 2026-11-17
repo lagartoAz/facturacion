@@ -11,8 +11,8 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { formatUSD } from '@/lib/currency'
-import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
+import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency'
+import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface Customer {
@@ -37,7 +37,20 @@ interface Payment {
   id: number
   amount_usd: number
   notes: string | null
+  method?: string
+  currency?: string
+  amount_ves?: number | null
+  amount_cop?: number | null
   created_at: string
+}
+
+type PayMethod = 'cash' | 'card' | 'transfer'
+type PayCurrency = 'USD' | 'VES' | 'COP'
+
+const PAY_METHOD_LABEL: Record<string, string> = {
+  cash: 'Efectivo',
+  card: 'Tarjeta',
+  transfer: 'Transferencia'
 }
 
 interface InvoiceDetail {
@@ -69,6 +82,7 @@ export default function CustomersPage(): JSX.Element {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [balances, setBalances] = useState<Record<number, number>>({})
+  const [criticalThreshold, setCriticalThreshold] = useState(40)
   const [debtDialogOpen, setDebtDialogOpen] = useState(false)
   const [debtCustomer, setDebtCustomer] = useState<Customer | null>(null)
   const [debtBalance, setDebtBalance] = useState(0)
@@ -76,6 +90,9 @@ export default function CustomersPage(): JSX.Element {
   const [payments, setPayments] = useState<Payment[]>([])
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
+  const [payMethod, setPayMethod] = useState<PayMethod>('cash')
+  const [payCurrency, setPayCurrency] = useState<PayCurrency>('USD')
+  const [rates, setRates] = useState<{ VES: number; COP: number }>({ VES: 0, COP: 0 })
   const [debtFilter, setDebtFilter] = useState<DebtFilter>('all')
   const [customerPage, setCustomerPage] = useState(1)
   const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false)
@@ -98,6 +115,19 @@ export default function CustomersPage(): JSX.Element {
   useEffect(() => {
     loadCustomers()
   }, [loadCustomers])
+
+  useEffect(() => {
+    window.api.getSetting('critical_debt_threshold').then((v) => {
+      const n = parseFloat((v as string | null) ?? '')
+      if (!isNaN(n) && n > 0) setCriticalThreshold(n)
+    })
+    window.api.getExchangeRates().then((rs: { currency: string; rate: number }[]) => {
+      setRates({
+        VES: rs.find((r) => r.currency === 'VES')?.rate ?? 0,
+        COP: rs.find((r) => r.currency === 'COP')?.rate ?? 0
+      })
+    })
+  }, [])
 
   function openNew(): void {
     setEditingId(null)
@@ -169,6 +199,8 @@ export default function CustomersPage(): JSX.Element {
     setDebtCustomer(c)
     setPaymentAmount('')
     setPaymentNotes('')
+    setPayMethod('cash')
+    setPayCurrency('USD')
     setDebtBalance(balances[c.id] ?? 0)
     setDebtDialogOpen(true)
     const [balance, invoices, pays] = await Promise.all([
@@ -186,7 +218,10 @@ export default function CustomersPage(): JSX.Element {
     if (!debtCustomer) return
     const amount = parseFloat(paymentAmount)
     if (isNaN(amount) || amount <= 0 || amount > debtBalance) return
-    await window.api.addCustomerPayment(debtCustomer.id, amount, paymentNotes || undefined)
+    await window.api.addCustomerPayment(debtCustomer.id, amount, paymentNotes || undefined, {
+      method: payMethod,
+      currency: payMethod === 'cash' ? payCurrency : undefined
+    })
     const [balance, invoices, pays] = await Promise.all([
       window.api.getCustomerBalance(debtCustomer.id),
       window.api.getCustomerCreditInvoices(debtCustomer.id),
@@ -198,6 +233,8 @@ export default function CustomersPage(): JSX.Element {
     setPayments(pays)
     setPaymentAmount('')
     setPaymentNotes('')
+    setPayMethod('cash')
+    setPayCurrency('USD')
     loadCustomers()
   }
 
@@ -213,7 +250,8 @@ export default function CustomersPage(): JSX.Element {
     await window.api.addCustomerPayment(
       debtCustomer.id,
       invoiceDetailPending,
-      `Pago factura ${invoiceDetail.invoice_number}`
+      `Pago factura ${invoiceDetail.invoice_number}`,
+      { method: payMethod, currency: payMethod === 'cash' ? payCurrency : undefined }
     )
     setInvoiceDetailOpen(false)
     const [balance, invoices, pays] = await Promise.all([
@@ -231,12 +269,22 @@ export default function CustomersPage(): JSX.Element {
   function getDebtBadge(customerId: number): { label: string; variant: 'default' | 'secondary' | 'destructive'; className?: string } {
     const balance = balances[customerId] ?? 0
     if (balance <= 0) return { label: 'Solvente', variant: 'default', className: 'bg-green-600 hover:bg-green-700' }
-    if (balance <= 50) return { label: `Debe ${formatUSD(balance)}`, variant: 'secondary', className: 'bg-yellow-500 text-white hover:bg-yellow-600' }
+    if (balance <= criticalThreshold) return { label: `Debe ${formatUSD(balance)}`, variant: 'secondary', className: 'bg-yellow-500 text-white hover:bg-yellow-600' }
     return { label: `Debe ${formatUSD(balance)}`, variant: 'destructive' }
   }
 
   function updateForm(field: string, value: string): void {
     setForm((f) => ({ ...f, [field]: value }))
+  }
+
+  // Short label describing how a debt payment was received (method + currency).
+  function paymentMethodLabel(p: Payment): string {
+    const method = PAY_METHOD_LABEL[p.method ?? 'cash'] ?? 'Efectivo'
+    if ((p.method ?? 'cash') === 'cash') {
+      const cur = p.currency === 'VES' ? 'Bs' : p.currency === 'COP' ? 'Pesos' : 'USD'
+      return `${method} (${cur})`
+    }
+    return `${method} (Bs)`
   }
 
   return (
@@ -264,7 +312,7 @@ export default function CustomersPage(): JSX.Element {
             ['all',     'Todos'],
             ['debtor',  'Deudores'],
             ['solvent', 'Solventes'],
-            ['extreme', 'Deuda extrema'],
+            ['extreme', 'Deuda critica'],
           ] as [DebtFilter, string][]).map(([val, label]) => (
             <Button
               key={val}
@@ -283,7 +331,7 @@ export default function CustomersPage(): JSX.Element {
           const bal = balances[c.id] ?? 0
           if (debtFilter === 'debtor')  return bal > 0
           if (debtFilter === 'solvent') return bal <= 0
-          if (debtFilter === 'extreme') return bal > 50
+          if (debtFilter === 'extreme') return bal > criticalThreshold
           return true
         })
         const totalPages = Math.ceil(filtered.length / CUSTOMER_PAGE_SIZE)
@@ -465,7 +513,7 @@ export default function CustomersPage(): JSX.Element {
               {/* Balance total */}
               <div className="text-center p-4 border rounded-lg">
                 <p className="text-sm text-muted-foreground">Balance pendiente</p>
-                <p className={`text-3xl font-bold ${debtBalance > 50 ? 'text-red-500' : debtBalance > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+                <p className={`text-3xl font-bold ${debtBalance > criticalThreshold ? 'text-red-500' : debtBalance > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
                   {formatUSD(debtBalance)}
                 </p>
               </div>
@@ -578,6 +626,7 @@ export default function CustomersPage(): JSX.Element {
                         <tr>
                           <th className="text-left p-2 font-medium">Fecha</th>
                           <th className="text-right p-2 font-medium">Monto</th>
+                          <th className="text-left p-2 font-medium">Metodo</th>
                           <th className="text-left p-2 font-medium">Nota</th>
                         </tr>
                       </thead>
@@ -586,6 +635,7 @@ export default function CustomersPage(): JSX.Element {
                           <tr key={p.id} className="border-t">
                             <td className="p-2">{format(new Date(p.created_at), 'dd/MM/yyyy')}</td>
                             <td className="p-2 text-right text-green-600">{formatUSD(p.amount_usd)}</td>
+                            <td className="p-2 text-muted-foreground">{paymentMethodLabel(p)}</td>
                             <td className="p-2 text-muted-foreground">{p.notes || '-'}</td>
                           </tr>
                         ))}
@@ -598,6 +648,10 @@ export default function CustomersPage(): JSX.Element {
                         <div className="flex justify-between items-start">
                           <span className="font-medium">{format(new Date(p.created_at), 'dd/MM/yyyy')}</span>
                           <span className="text-green-600 font-medium">{formatUSD(p.amount_usd)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-muted-foreground">Metodo</span>
+                          <span className="font-medium text-foreground">{paymentMethodLabel(p)}</span>
                         </div>
                         <div className="flex justify-between text-xs">
                           <span className="text-muted-foreground">Nota</span>
@@ -634,6 +688,64 @@ export default function CustomersPage(): JSX.Element {
                         Pagar Todo
                       </Button>
                     </div>
+
+                    {/* Payment method — same choices as the point of sale, so the
+                        money is routed to the right place in the cash register. */}
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Metodo de pago</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {([
+                          ['cash', 'Efectivo', DollarSign],
+                          ['card', 'Tarjeta', CreditCard],
+                          ['transfer', 'Transfer.', ArrowRightLeft]
+                        ] as [PayMethod, string, typeof DollarSign][]).map(([val, label, Icon]) => (
+                          <Button
+                            key={val}
+                            type="button"
+                            variant={payMethod === val ? 'default' : 'outline'}
+                            size="sm"
+                            className="flex-col h-auto py-2 gap-1"
+                            onClick={() => setPayMethod(val)}
+                          >
+                            <Icon className="h-4 w-4" />
+                            <span className="text-xs">{label}</span>
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {payMethod === 'cash' && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Moneda del efectivo</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['USD', 'VES', 'COP'] as PayCurrency[]).map((cur) => (
+                            <Button
+                              key={cur}
+                              type="button"
+                              variant={payCurrency === cur ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setPayCurrency(cur)}
+                            >
+                              {cur === 'USD' ? 'Dolares' : cur === 'VES' ? 'Bolivares' : 'Pesos'}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Equivalent in the currency actually received. */}
+                    {paymentAmount && !isNaN(parseFloat(paymentAmount)) && (
+                      (payMethod !== 'cash' || payCurrency === 'VES') && rates.VES > 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Equivale a {formatVES(convertCurrency(parseFloat(paymentAmount), rates.VES))}
+                        </p>
+                      ) : payMethod === 'cash' && payCurrency === 'COP' && rates.COP > 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          Equivale a {formatCOP(convertCurrency(parseFloat(paymentAmount), rates.COP))}
+                        </p>
+                      ) : null
+                    )}
+
                     <Input
                       placeholder="Nota (opcional)"
                       value={paymentNotes}

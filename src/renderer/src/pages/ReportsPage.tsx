@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { formatUSD } from '@/lib/currency'
-import { format, subDays } from 'date-fns'
+import { format, subDays, startOfYear, endOfYear } from 'date-fns'
 import {
   BarChart,
   Bar,
@@ -34,8 +34,9 @@ interface Summary {
 }
 
 export default function ReportsPage(): JSX.Element {
-  const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
-  const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'))
+  // Default to the full current year (1 Jan – 31 Dec).
+  const [dateFrom, setDateFrom] = useState(format(startOfYear(new Date()), 'yyyy-MM-dd'))
+  const [dateTo, setDateTo] = useState(format(endOfYear(new Date()), 'yyyy-MM-dd'))
   const [dailySales, setDailySales] = useState<DailySale[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [showAllProducts, setShowAllProducts] = useState(false)
@@ -120,6 +121,15 @@ export default function ReportsPage(): JSX.Element {
           }}
         >
           30 dias
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setDateFrom(format(startOfYear(new Date()), 'yyyy-MM-dd'))
+            setDateTo(format(endOfYear(new Date()), 'yyyy-MM-dd'))
+          }}
+        >
+          Año
         </Button>
       </div>
 

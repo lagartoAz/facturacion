@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { SettingsService } from './settings.service'
 
 export interface Customer {
   id: number
@@ -23,8 +24,19 @@ export interface CreateCustomerDTO {
 
 export interface UpdateCustomerDTO extends Partial<CreateCustomerDTO> {}
 
+// How a debt payment was actually received, mirroring the point-of-sale charge:
+// a method (cash/card/transfer) and, for cash, the currency used.
+export interface PaymentDetails {
+  method?: 'cash' | 'card' | 'transfer'
+  currency?: 'USD' | 'VES' | 'COP'
+}
+
 export class CustomerService {
-  constructor(private db: Database.Database) {}
+  private settings: SettingsService
+
+  constructor(private db: Database.Database) {
+    this.settings = new SettingsService(db)
+  }
 
   getAll(search?: string): Customer[] {
     if (search) {
@@ -122,15 +134,49 @@ export class CustomerService {
     ).all(customerId) as { id: number; invoice_number: string; total_usd: number; created_at: string }[]
   }
 
-  addPayment(customerId: number, amount: number, notes?: string): void {
+  addPayment(customerId: number, amount: number, notes?: string, details?: PaymentDetails): void {
+    const method = details?.method ?? 'cash'
+    // Card/transfer debt payments land in the bank in bolivares; a cash payment
+    // may be in dollars, bolivares or pesos.
+    const currency = method === 'cash' ? details?.currency ?? 'USD' : 'VES'
+
+    const rates = this.settings.getExchangeRates()
+    const rateVes = rates.find((r) => r.currency === 'VES')?.rate ?? 0
+    const rateCop = rates.find((r) => r.currency === 'COP')?.rate ?? 0
+
+    // Store the figure in the currency actually handed over, for the cash
+    // register. amount_usd always reduces the balance.
+    const amountVes = currency === 'VES' ? amount * rateVes : null
+    const amountCop = currency === 'COP' ? amount * rateCop : null
+
     this.db.prepare(
-      "INSERT INTO customer_payments (customer_id, amount_usd, notes, created_at) VALUES (?, ?, ?, datetime('now', 'localtime'))"
-    ).run(customerId, amount, notes || null)
+      `INSERT INTO customer_payments
+        (customer_id, amount_usd, notes, method, currency, amount_ves, amount_cop, rate_ves, rate_cop, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`
+    ).run(customerId, amount, notes || null, method, currency, amountVes, amountCop, rateVes, rateCop)
   }
 
-  getPayments(customerId: number): { id: number; amount_usd: number; notes: string | null; created_at: string }[] {
+  getPayments(customerId: number): {
+    id: number
+    amount_usd: number
+    notes: string | null
+    method: string
+    currency: string
+    amount_ves: number | null
+    amount_cop: number | null
+    created_at: string
+  }[] {
     return this.db.prepare(
-      'SELECT id, amount_usd, notes, created_at FROM customer_payments WHERE customer_id = ? ORDER BY created_at DESC'
-    ).all(customerId) as { id: number; amount_usd: number; notes: string | null; created_at: string }[]
+      'SELECT id, amount_usd, notes, method, currency, amount_ves, amount_cop, created_at FROM customer_payments WHERE customer_id = ? ORDER BY created_at DESC'
+    ).all(customerId) as {
+      id: number
+      amount_usd: number
+      notes: string | null
+      method: string
+      currency: string
+      amount_ves: number | null
+      amount_cop: number | null
+      created_at: string
+    }[]
   }
 }

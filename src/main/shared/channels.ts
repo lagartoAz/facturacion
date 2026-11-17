@@ -8,6 +8,7 @@ export const PROXIED_CHANNELS: string[] = [
   'products:getAll',
   'products:count',
   'products:inventoryTotals',
+  'products:lowStockCount',
   'products:getByBarcode',
   'products:search',
   'products:create',

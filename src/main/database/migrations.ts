@@ -371,4 +371,22 @@ export function runMigrations(db: Database.Database): void {
     }
     db.pragma('user_version = 18')
   }
+
+  if (version < 19) {
+    // Debt (credit) payments can now be received in different currencies and
+    // methods, just like a point-of-sale charge, so the cash register knows
+    // where the physical money landed. amount_usd stays the figure that reduces
+    // the balance; the extra columns record how it was actually paid.
+    db.exec(`
+      ALTER TABLE customer_payments ADD COLUMN method TEXT NOT NULL DEFAULT 'cash';
+      ALTER TABLE customer_payments ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD';
+      ALTER TABLE customer_payments ADD COLUMN amount_ves REAL;
+      ALTER TABLE customer_payments ADD COLUMN amount_cop REAL;
+      ALTER TABLE customer_payments ADD COLUMN rate_ves REAL;
+      ALTER TABLE customer_payments ADD COLUMN rate_cop REAL;
+    `)
+    // Threshold (USD) above which a customer's debt is considered "critical".
+    db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('critical_debt_threshold', '40')").run()
+    db.pragma('user_version = 19')
+  }
 }

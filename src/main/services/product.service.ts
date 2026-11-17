@@ -55,6 +55,8 @@ export interface ProductFilters {
   category_id?: number
   search?: string
   active_only?: boolean
+  // 'low' = stock at or below its minimum; 'high' = stock above its minimum.
+  stock_level?: 'low' | 'high'
   page?: number
   limit?: number
 }
@@ -84,6 +86,11 @@ export class ProductService {
       const s = `%${filters.search}%`
       params.push(s, s)
     }
+    if (filters?.stock_level === 'low') {
+      query += ' AND p.stock <= p.min_stock'
+    } else if (filters?.stock_level === 'high') {
+      query += ' AND p.stock > p.min_stock'
+    }
 
     query += ' ORDER BY p.stock ASC, p.name ASC'
     const limit = filters?.limit ?? 20
@@ -103,7 +110,19 @@ export class ProductService {
       const s = `%${filters.search}%`
       params.push(s, s)
     }
+    if (filters?.stock_level === 'low') { query += ' AND p.stock <= p.min_stock' }
+    else if (filters?.stock_level === 'high') { query += ' AND p.stock > p.min_stock' }
     return (this.db.prepare(query).get(...params) as { n: number }).n
+  }
+
+  // Count of active products at or below their minimum stock — the Dashboard's
+  // "Stock Bajo" figure. A dedicated COUNT avoids paging the full product list.
+  countLowStock(): number {
+    return (
+      this.db
+        .prepare('SELECT COUNT(*) as n FROM products p WHERE p.is_active = 1 AND p.stock <= p.min_stock')
+        .get() as { n: number }
+    ).n
   }
 
   getInventoryTotals(filters?: ProductFilters): { total_units: number; total_invested: number } {
@@ -121,6 +140,8 @@ export class ProductService {
       const s = `%${filters.search}%`
       params.push(s, s)
     }
+    if (filters?.stock_level === 'low') { query += ' AND p.stock <= p.min_stock' }
+    else if (filters?.stock_level === 'high') { query += ' AND p.stock > p.min_stock' }
     return this.db.prepare(query).get(...params) as { total_units: number; total_invested: number }
   }
 

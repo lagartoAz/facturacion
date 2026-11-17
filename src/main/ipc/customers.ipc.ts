@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import { CustomerService } from '../services/customer.service'
-import type { CreateCustomerDTO, UpdateCustomerDTO } from '../services/customer.service'
+import type { CreateCustomerDTO, UpdateCustomerDTO, PaymentDetails } from '../services/customer.service'
 import { getBackupService } from '../services/backup.service'
 
 export function registerCustomerHandlers(db: Database.Database): void {
@@ -40,8 +40,8 @@ export function registerCustomerHandlers(db: Database.Database): void {
     return service.getCreditInvoices(id)
   })
 
-  ipcMain.handle('customers:addPayment', (_event, id: number, amount: number, notes?: string) => {
-    const result = service.addPayment(id, amount, notes)
+  ipcMain.handle('customers:addPayment', (_event, id: number, amount: number, notes?: string, details?: PaymentDetails) => {
+    const result = service.addPayment(id, amount, notes, details)
     getBackupService().schedule()
     return result
   })

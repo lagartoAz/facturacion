@@ -5,6 +5,9 @@ export interface PurchaseItemInput {
   productName: string
   quantity: number
   unitCost?: number
+  // New selling price (USD). When provided, it replaces the product's price;
+  // when omitted/undefined the existing price is kept.
+  unitPrice?: number
 }
 
 export interface CreatePurchaseDTO {
@@ -109,6 +112,10 @@ export class PurchaseService {
       const updateCost = this.db.prepare(
         `UPDATE products SET cost_usd = ?, updated_at = datetime('now') WHERE id = ?`
       )
+      // Replace the selling price only when the intake supplied a new one.
+      const updatePrice = this.db.prepare(
+        `UPDATE products SET price_usd = ?, updated_at = datetime('now') WHERE id = ?`
+      )
 
       for (const item of items) {
         const unitCost = item.unitCost ?? 0
@@ -122,6 +129,7 @@ export class PurchaseService {
         )
         addStock.run(item.quantity, item.productId)
         if (unitCost > 0) updateCost.run(unitCost, item.productId)
+        if (item.unitPrice != null && item.unitPrice > 0) updatePrice.run(item.unitPrice, item.productId)
       }
 
       return this.getById(purchaseId)!

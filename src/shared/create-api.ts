@@ -31,6 +31,7 @@ export function createApi(invoke: Invoke) {
         total_units: number
         total_invested: number
       }>,
+    getLowStockCount: () => invoke('products:lowStockCount') as Promise<number>,
     getProductByBarcode: (barcode: string) => invoke('products:getByBarcode', barcode),
     searchProducts: (query: string) => invoke('products:search', query),
     createProduct: (data: Record<string, unknown>) => invoke('products:create', data),
@@ -57,8 +58,12 @@ export function createApi(invoke: Invoke) {
     getCustomerBalance: (id: number) => invoke('customers:getBalance', id),
     getCustomerBalances: () => invoke('customers:getBalances'),
     getCustomerCreditInvoices: (id: number) => invoke('customers:getCreditInvoices', id),
-    addCustomerPayment: (id: number, amount: number, notes?: string) =>
-      invoke('customers:addPayment', id, amount, notes),
+    addCustomerPayment: (
+      id: number,
+      amount: number,
+      notes?: string,
+      details?: { method?: 'cash' | 'card' | 'transfer'; currency?: 'USD' | 'VES' | 'COP' }
+    ) => invoke('customers:addPayment', id, amount, notes, details),
     getCustomerPayments: (id: number) => invoke('customers:getPayments', id),
 
     // Suppliers

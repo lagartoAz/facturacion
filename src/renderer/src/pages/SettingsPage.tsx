@@ -79,6 +79,7 @@ export default function SettingsPage(): JSX.Element {
   const [businessRif, setBusinessRif] = useState('')
   const [businessAddress, setBusinessAddress] = useState('')
   const [businessPhone, setBusinessPhone] = useState('')
+  const [criticalDebtThreshold, setCriticalDebtThreshold] = useState('40')
   const [saved, setSaved] = useState(false)
   const [theme, setThemeState] = useState<Theme>(() => getTheme())
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -438,6 +439,7 @@ export default function SettingsPage(): JSX.Element {
     setBusinessRif(settings.business_rif || '')
     setBusinessAddress(settings.business_address || '')
     setBusinessPhone(settings.business_phone || '')
+    setCriticalDebtThreshold(settings.critical_debt_threshold || '40')
     setReceiptTitle(settings.receipt_title || '')
     setReceiptFontSize(settings.receipt_font_size || '14')
     setReceiptFontWeight(settings.receipt_font_weight || '700')
@@ -474,6 +476,13 @@ export default function SettingsPage(): JSX.Element {
       window.api.setSetting('business_address', businessAddress),
       window.api.setSetting('business_phone', businessPhone)
     ])
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function saveDebtSettings(): Promise<void> {
+    const n = parseFloat(criticalDebtThreshold)
+    await window.api.setSetting('critical_debt_threshold', (!isNaN(n) && n > 0 ? n : 40).toString())
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -603,6 +612,34 @@ export default function SettingsPage(): JSX.Element {
           <Button onClick={saveRates} size="sm">
             <Save className="mr-2 h-4 w-4" />
             Guardar Tasas
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Deudas de Clientes</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="criticalDebt">Deuda critica a partir de (USD)</Label>
+            <Input
+              id="criticalDebt"
+              type="number"
+              step="1"
+              min="1"
+              value={criticalDebtThreshold}
+              onChange={(e) => setCriticalDebtThreshold(e.target.value)}
+              placeholder="40"
+              className="max-w-[12rem]"
+            />
+            <p className="text-xs text-muted-foreground">
+              Un cliente que deba mas de este monto se marca como deudor critico en el Home y en Clientes.
+            </p>
+          </div>
+          <Button onClick={saveDebtSettings} size="sm">
+            <Save className="mr-2 h-4 w-4" />
+            Guardar
           </Button>
         </CardContent>
       </Card>

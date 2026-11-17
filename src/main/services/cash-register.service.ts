@@ -59,6 +59,16 @@ interface SalesByMethod {
   transfer_cop: number
   credit: number
   count: number
+  // Portion of the figures above that came from debt (credit) payments received
+  // during this session, so the register can show where that money came from.
+  debt_cash: number
+  debt_cash_ves: number
+  debt_cash_cop: number
+  debt_card_ves: number
+  debt_transfer_ves: number
+  debt_transfer_cop: number
+  debt_total_usd: number
+  debt_count: number
 }
 
 export class CashRegisterService {
@@ -179,7 +189,7 @@ export class CashRegisterService {
       )
       .all(openedAt) as { payment_method: string; total: number; ves: number; cop: number; count: number }[]
 
-    const result: SalesByMethod = { cash: 0, cash_ves: 0, cash_cop: 0, card: 0, card_ves: 0, transfer: 0, transfer_ves: 0, transfer_cop: 0, credit: 0, count: 0 }
+    const result: SalesByMethod = { cash: 0, cash_ves: 0, cash_cop: 0, card: 0, card_ves: 0, transfer: 0, transfer_ves: 0, transfer_cop: 0, credit: 0, count: 0, debt_cash: 0, debt_cash_ves: 0, debt_cash_cop: 0, debt_card_ves: 0, debt_transfer_ves: 0, debt_transfer_cop: 0, debt_total_usd: 0, debt_count: 0 }
     for (const row of rows) {
       if (row.payment_method in result) {
         result[row.payment_method as keyof Omit<SalesByMethod, 'count' | 'cash_ves' | 'cash_cop' | 'transfer_ves' | 'transfer_cop' | 'card_ves'>] = row.total
@@ -229,6 +239,52 @@ export class CashRegisterService {
       }
     }
     result.count += mixedCount
+
+    // Debt (credit) payments collected during this session. They are folded into
+    // the matching method/currency totals (so expected cash stays correct) and
+    // also kept apart in debt_* so the UI can show the share from debts.
+    const debtRows = this.db
+      .prepare(
+        `SELECT method, currency,
+                COALESCE(SUM(amount_usd), 0) as usd,
+                COALESCE(SUM(amount_ves), 0) as ves,
+                COALESCE(SUM(amount_cop), 0) as cop,
+                COUNT(*) as count
+         FROM customer_payments
+         WHERE created_at >= ?
+         GROUP BY method, currency`
+      )
+      .all(openedAt) as { method: string; currency: string; usd: number; ves: number; cop: number; count: number }[]
+
+    for (const row of debtRows) {
+      result.debt_total_usd += row.usd
+      result.debt_count += row.count
+      if (row.method === 'cash') {
+        if (row.currency === 'VES') {
+          result.cash_ves += row.ves
+          result.debt_cash_ves += row.ves
+        } else if (row.currency === 'COP') {
+          result.cash_cop += row.cop
+          result.debt_cash_cop += row.cop
+        } else {
+          result.cash += row.usd
+          result.debt_cash += row.usd
+        }
+      } else if (row.method === 'card') {
+        result.card += row.usd
+        result.card_ves += row.ves
+        result.debt_card_ves += row.ves
+      } else if (row.method === 'transfer') {
+        result.transfer += row.usd
+        if (row.cop > 0) {
+          result.transfer_cop += row.cop
+          result.debt_transfer_cop += row.cop
+        } else {
+          result.transfer_ves += row.ves
+          result.debt_transfer_ves += row.ves
+        }
+      }
+    }
 
     return result
   }

@@ -24,7 +24,8 @@ import {
   Unlock,
   Clock,
   Pencil,
-  ArrowDownToLine
+  ArrowDownToLine,
+  Wallet
 } from 'lucide-react'
 
 interface CashRegister {
@@ -65,6 +66,14 @@ interface SessionSales {
   transfer_cop: number
   credit: number
   count: number
+  debt_cash: number
+  debt_cash_ves: number
+  debt_cash_cop: number
+  debt_card_ves: number
+  debt_transfer_ves: number
+  debt_transfer_cop: number
+  debt_total_usd: number
+  debt_count: number
 }
 
 interface Withdrawal {
@@ -449,6 +458,62 @@ export default function CashRegisterPage(): JSX.Element {
             </Card>
           </div>
 
+          {/* Debt (credit) payments collected this session. Already folded into
+              the totals above; shown apart so it's clear where the money came from. */}
+          {sessionSales.debt_count > 0 && (
+            <Card className="border-emerald-500/40">
+              <CardHeader className="flex flex-row items-center justify-between py-3">
+                <CardTitle className="text-sm font-medium text-emerald-600 flex items-center gap-2">
+                  <Wallet className="h-4 w-4" />
+                  Pagos de Deudas (incluidos arriba)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 text-sm">
+                <div className="flex justify-between font-medium">
+                  <span>Total cobrado en deudas</span>
+                  <span className="text-emerald-600">{formatUSD(sessionSales.debt_total_usd)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">{sessionSales.debt_count} pago(s)</p>
+                {sessionSales.debt_cash > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Efectivo USD</span>
+                    <span>{formatUSD(sessionSales.debt_cash)}</span>
+                  </div>
+                )}
+                {sessionSales.debt_cash_ves > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Efectivo VES</span>
+                    <span>{formatVES(sessionSales.debt_cash_ves)}</span>
+                  </div>
+                )}
+                {sessionSales.debt_cash_cop > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Efectivo COP</span>
+                    <span>{formatCOP(sessionSales.debt_cash_cop)}</span>
+                  </div>
+                )}
+                {sessionSales.debt_card_ves > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tarjeta (Banco Bs)</span>
+                    <span>{formatVES(sessionSales.debt_card_ves)}</span>
+                  </div>
+                )}
+                {sessionSales.debt_transfer_ves > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Transferencia (Banco Bs)</span>
+                    <span>{formatVES(sessionSales.debt_transfer_ves)}</span>
+                  </div>
+                )}
+                {sessionSales.debt_transfer_cop > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Transferencia (Banco COP)</span>
+                    <span>{formatCOP(sessionSales.debt_transfer_cop)}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Withdrawals list */}
           {withdrawals.length > 0 && (
             <Card>
@@ -723,6 +788,12 @@ export default function CashRegisterPage(): JSX.Element {
                   <span className="text-muted-foreground">Facturas</span>
                   <span>{sessionSales.count}</span>
                 </div>
+                {sessionSales.debt_total_usd > 0 && (
+                  <div className="flex justify-between text-emerald-600">
+                    <span>Incluye pago de deudas ({sessionSales.debt_count})</span>
+                    <span>{formatUSD(sessionSales.debt_total_usd)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Bank payments (card + transfer) in VES */}

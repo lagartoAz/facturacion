@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency'
-import { format, subDays } from 'date-fns'
+import { format, subDays, startOfYear, endOfYear } from 'date-fns'
 import { CartesianGrid, Line, LineChart, XAxis } from 'recharts'
 import {
   ChartContainer,
@@ -17,7 +18,10 @@ import {
   ShoppingCart,
   AlertTriangle,
   Plus,
-  TrendingUp
+  TrendingUp,
+  Users,
+  ArrowRightLeft,
+  Trophy
 } from 'lucide-react'
 
 interface DailySale {
@@ -32,6 +36,12 @@ interface Summary {
   average_ticket: number
 }
 
+interface TopProduct {
+  name: string
+  quantity: number
+  revenue: number
+}
+
 interface ExchangeRate {
   currency: string
   rate: number
@@ -44,51 +54,98 @@ const chartConfig = {
   }
 } satisfies ChartConfig
 
+const TODAY = (): string => format(new Date(), 'yyyy-MM-dd')
+
 export default function DashboardPage(): JSX.Element {
   const navigate = useNavigate()
-  const [todaySummary, setTodaySummary] = useState<Summary>({
+  // Period that drives the sales / invoices / top-products cards. Defaults to
+  // "today" so the Home opens showing the current day.
+  const [periodFrom, setPeriodFrom] = useState(TODAY)
+  const [periodTo, setPeriodTo] = useState(TODAY)
+  const [periodSummary, setPeriodSummary] = useState<Summary>({
     total_revenue: 0,
     total_invoices: 0,
     average_ticket: 0
   })
+  const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [weekSales, setWeekSales] = useState<DailySale[]>([])
   const [lowStockCount, setLowStockCount] = useState(0)
+  const [criticalDebtors, setCriticalDebtors] = useState(0)
   const [rates, setRates] = useState<ExchangeRate[]>([])
 
+  // Figures tied to the chosen period reload whenever it changes.
   useEffect(() => {
-    loadDashboard()
+    void loadPeriod()
+  }, [periodFrom, periodTo])
+
+  // Figures independent of the period load once.
+  useEffect(() => {
+    void loadStatic()
   }, [])
 
-  async function loadDashboard(): Promise<void> {
+  async function loadPeriod(): Promise<void> {
+    const [summary, top] = await Promise.all([
+      window.api.getSalesSummary(periodFrom, periodTo) as Promise<Summary>,
+      window.api.getTopProducts(periodFrom, periodTo, 5) as Promise<TopProduct[]>
+    ])
+    setPeriodSummary(summary)
+    setTopProducts(top)
+  }
+
+  async function loadStatic(): Promise<void> {
     const today = format(new Date(), 'yyyy-MM-dd')
     const weekAgo = format(subDays(new Date(), 7), 'yyyy-MM-dd')
 
-    const [summary, sales, products, ratesData] = await Promise.all([
-      window.api.getSalesSummary(today, today),
-      window.api.getDailySales(weekAgo, today),
-      window.api.getProducts({ active_only: true }),
-      window.api.getExchangeRates()
+    const [sales, lowStock, ratesData, balances, thresholdRaw] = await Promise.all([
+      window.api.getDailySales(weekAgo, today) as Promise<DailySale[]>,
+      window.api.getLowStockCount(),
+      window.api.getExchangeRates() as Promise<ExchangeRate[]>,
+      window.api.getCustomerBalances() as Promise<Record<number, number>>,
+      window.api.getSetting('critical_debt_threshold') as Promise<string | null>
     ])
 
-    setTodaySummary(summary)
     setWeekSales(sales)
     setRates(ratesData)
+    setLowStockCount(lowStock)
 
-    // Count low stock products
-    const lowStock = products.filter(
-      (p: { stock: number; min_stock: number }) => p.stock <= p.min_stock
-    )
-    setLowStockCount(lowStock.length)
+    const threshold = parseFloat(thresholdRaw ?? '') || 40
+    setCriticalDebtors(Object.values(balances).filter((b) => b > threshold).length)
   }
 
   const getRate = (currency: string): number =>
     rates.find((r) => r.currency === currency)?.rate ?? 0
 
+  const isToday = periodFrom === periodTo && periodTo === format(new Date(), 'yyyy-MM-dd')
+  const periodLabel = isToday
+    ? 'Hoy'
+    : periodFrom === periodTo
+      ? format(new Date(periodFrom + 'T00:00:00'), 'dd/MM/yyyy')
+      : `${format(new Date(periodFrom + 'T00:00:00'), 'dd/MM')} – ${format(new Date(periodTo + 'T00:00:00'), 'dd/MM')}`
+
+  function setToday(): void {
+    const t = format(new Date(), 'yyyy-MM-dd')
+    setPeriodFrom(t)
+    setPeriodTo(t)
+  }
+  function setYesterday(): void {
+    const y = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+    setPeriodFrom(y)
+    setPeriodTo(y)
+  }
+  function setLastDays(n: number): void {
+    setPeriodFrom(format(subDays(new Date(), n), 'yyyy-MM-dd'))
+    setPeriodTo(format(new Date(), 'yyyy-MM-dd'))
+  }
+  function setYear(): void {
+    setPeriodFrom(format(startOfYear(new Date()), 'yyyy-MM-dd'))
+    setPeriodTo(format(endOfYear(new Date()), 'yyyy-MM-dd'))
+  }
+
   return (
     <div className="p-4 landscape:p-6 space-y-6">
       <div className="flex flex-col gap-3 landscape:flex-row landscape:items-center landscape:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <h1 className="text-2xl font-bold">Home</h1>
           <p className="text-muted-foreground">{format(new Date(), 'EEEE, dd MMMM yyyy')}</p>
         </div>
         <div className="flex gap-2">
@@ -103,34 +160,53 @@ export default function DashboardPage(): JSX.Element {
         </div>
       </div>
 
+      {/* Period filter — drives the sales, invoices and top-products cards. */}
+      <div className="flex flex-wrap gap-2 items-end">
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Desde</label>
+          <Input type="date" value={periodFrom} onChange={(e) => setPeriodFrom(e.target.value)} className="w-40" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Hasta</label>
+          <Input type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} className="w-40" />
+        </div>
+        <Button variant="outline" size="sm" onClick={setToday}>Hoy</Button>
+        <Button variant="outline" size="sm" onClick={setYesterday}>Ayer</Button>
+        <Button variant="outline" size="sm" onClick={() => setLastDays(7)}>7 dias</Button>
+        <Button variant="outline" size="sm" onClick={() => setLastDays(30)}>30 dias</Button>
+        <Button variant="outline" size="sm" onClick={setYear}>Año</Button>
+      </div>
+
       {/* Summary cards */}
-      <div className="grid grid-cols-2 landscape:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 landscape:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between py-3">
-            <CardTitle className="text-sm font-medium">Ventas Hoy (USD)</CardTitle>
+            <CardTitle className="text-sm font-medium">Ventas (USD)</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{formatUSD(todaySummary.total_revenue)}</p>
+            <p className="text-2xl font-bold">{formatUSD(periodSummary.total_revenue)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{periodLabel}</p>
             {getRate('VES') > 0 && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {formatVES(convertCurrency(todaySummary.total_revenue, getRate('VES')))}
+              <p className="text-xs text-muted-foreground">
+                {formatVES(convertCurrency(periodSummary.total_revenue, getRate('VES')))}
               </p>
             )}
             {getRate('COP') > 0 && (
               <p className="text-xs text-muted-foreground">
-                {formatCOP(convertCurrency(todaySummary.total_revenue, getRate('COP')))}
+                {formatCOP(convertCurrency(periodSummary.total_revenue, getRate('COP')))}
               </p>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between py-3">
-            <CardTitle className="text-sm font-medium">Facturas Hoy</CardTitle>
+            <CardTitle className="text-sm font-medium">Facturas</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{todaySummary.total_invoices}</p>
+            <p className="text-2xl font-bold">{periodSummary.total_invoices}</p>
+            <p className="text-xs text-muted-foreground mt-1">{periodLabel}</p>
           </CardContent>
         </Card>
         <Card>
@@ -139,7 +215,28 @@ export default function DashboardPage(): JSX.Element {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{formatUSD(todaySummary.average_ticket)}</p>
+            <p className="text-2xl font-bold">{formatUSD(periodSummary.average_ticket)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{periodLabel}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between py-3">
+            <CardTitle className="text-sm font-medium">Tasa de Cambio</CardTitle>
+            <ArrowRightLeft className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs text-muted-foreground">1 USD</span>
+              <span className="text-lg font-bold">
+                {getRate('VES') > 0 ? formatVES(getRate('VES')) : '—'}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-xs text-muted-foreground">1 USD</span>
+              <span className="text-lg font-bold">
+                {getRate('COP') > 0 ? formatCOP(getRate('COP')) : '—'}
+              </span>
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -156,7 +253,55 @@ export default function DashboardPage(): JSX.Element {
             <p className="text-xs text-muted-foreground mt-1">productos</p>
           </CardContent>
         </Card>
+        <Card
+          className="cursor-pointer hover:bg-muted/30 transition-colors"
+          onClick={() => navigate('/customers')}
+        >
+          <CardHeader className="flex flex-row items-center justify-between py-3">
+            <CardTitle className="text-sm font-medium">Deudores Criticos</CardTitle>
+            <Users
+              className={`h-4 w-4 ${criticalDebtors > 0 ? 'text-red-500' : 'text-muted-foreground'}`}
+            />
+          </CardHeader>
+          <CardContent>
+            <p className={`text-2xl font-bold ${criticalDebtors > 0 ? 'text-red-500' : ''}`}>
+              {criticalDebtors}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">clientes</p>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Top 5 products for the selected period */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Trophy className="h-5 w-5" />
+            Top 5 Productos
+          </CardTitle>
+          <span className="text-sm font-normal text-muted-foreground">{periodLabel}</span>
+        </CardHeader>
+        <CardContent>
+          {topProducts.length > 0 ? (
+            <div className="space-y-2">
+              {topProducts.map((p, i) => (
+                <div key={i} className="flex items-center gap-3 text-sm">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted font-semibold">
+                    {i + 1}
+                  </span>
+                  <span className="flex-1 truncate">{p.name}</span>
+                  <span className="text-muted-foreground">{p.quantity} uds</span>
+                  <span className="font-semibold w-24 text-right">{formatUSD(p.revenue)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-muted-foreground py-6">
+              No hay ventas en el periodo seleccionado
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Week chart */}
       <Card>

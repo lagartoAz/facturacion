@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 import { isMobileApp } from '@/lib/product-image'
 
 export const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/', label: 'Home', icon: LayoutDashboard },
   { to: '/products', label: 'Productos', icon: Package },
   { to: '/suppliers', label: 'Proveedores', icon: Truck },
   { to: '/customers', label: 'Clientes', icon: Users },
