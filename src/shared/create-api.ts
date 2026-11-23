@@ -90,10 +90,47 @@ export function createApi(invoke: Invoke) {
 
     // Reports
     getDailySales: (from: string, to: string) => invoke('reports:dailySales', from, to),
+    getHourlySales: (day: string) => invoke('reports:hourlySales', day),
     getTopProducts: (from: string, to: string, limit?: number) =>
       invoke('reports:topProducts', from, to, limit),
     getSalesSummary: (from: string, to: string) => invoke('reports:summary', from, to),
     getProductStats: (productId: number) => invoke('reports:productStats', productId),
+
+    // Loyalty points add-on ("Fidelidad")
+    getLoyaltyStatus: () => invoke('loyalty:status'),
+    activateLoyalty: (key: string) => invoke('loyalty:activate', key),
+    deactivateLoyalty: () => invoke('loyalty:deactivate'),
+    setLoyaltyConfig: (cfg: Record<string, unknown>) => invoke('loyalty:setConfig', cfg),
+    getLoyaltyBalance: (customerId: number) => invoke('loyalty:balance', customerId),
+    getLoyaltyBalances: () => invoke('loyalty:allBalances'),
+    getLoyaltySummaryByCustomer: () => invoke('loyalty:summaryByCustomer'),
+    getLoyaltyHistory: (customerId: number, limit?: number) =>
+      invoke('loyalty:history', customerId, limit),
+    redeemLoyaltyPoints: (customerId: number, points: number, note?: string) =>
+      invoke('loyalty:redeem', customerId, points, note),
+    adjustLoyaltyPoints: (customerId: number, points: number, note?: string) =>
+      invoke('loyalty:adjust', customerId, points, note),
+    // Product points
+    getLoyaltyProductPoints: () => invoke('loyalty:productPoints'),
+    setLoyaltyProductPoints: (productId: number, points: number) =>
+      invoke('loyalty:setProductPoints', productId, points),
+    // Rewards
+    listLoyaltyRewards: (activeOnly?: boolean) => invoke('loyalty:listRewards', activeOnly),
+    createLoyaltyReward: (reward: Record<string, unknown>) =>
+      invoke('loyalty:createReward', reward),
+    updateLoyaltyReward: (id: number, reward: Record<string, unknown>) =>
+      invoke('loyalty:updateReward', id, reward),
+    deleteLoyaltyReward: (id: number) => invoke('loyalty:deleteReward', id),
+    redeemLoyaltyReward: (customerId: number, rewardId: number) =>
+      invoke('loyalty:redeemReward', customerId, rewardId),
+    // Raffle
+    getActiveRaffle: () => invoke('loyalty:activeRaffle'),
+    listRaffles: () => invoke('loyalty:listRaffles'),
+    createRaffle: (name: string, pointsPerEntry: number, minPoints: number) =>
+      invoke('loyalty:createRaffle', name, pointsPerEntry, minPoints),
+    deleteRaffle: (id: number) => invoke('loyalty:deleteRaffle', id),
+    getRaffleParticipants: (raffleId: number) => invoke('loyalty:raffleParticipants', raffleId),
+    drawRaffle: (raffleId: number, rand: number) => invoke('loyalty:drawRaffle', raffleId, rand),
 
     // Settings & Exchange Rates
     getExchangeRates: () => invoke('settings:getRates'),

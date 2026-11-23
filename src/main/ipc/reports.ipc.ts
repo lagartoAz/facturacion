@@ -9,6 +9,10 @@ export function registerReportHandlers(db: Database.Database): void {
     return service.dailySales(from, to)
   })
 
+  ipcMain.handle('reports:hourlySales', (_event, day: string) => {
+    return service.hourlySales(day)
+  })
+
   ipcMain.handle('reports:topProducts', (_event, from: string, to: string, limit?: number) => {
     return service.topProducts(from, to, limit)
   })

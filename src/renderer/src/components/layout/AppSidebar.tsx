@@ -12,10 +12,12 @@ import {
   ClipboardList,
   Truck,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Gift
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isMobileApp } from '@/lib/product-image'
+import { useLoyalty } from '@/hooks/useLoyalty'
 
 export const navItems = [
   { to: '/', label: 'Home', icon: LayoutDashboard },
@@ -28,6 +30,10 @@ export const navItems = [
   { to: '/reports', label: 'Reportes', icon: BarChart3 },
   { to: '/settings', label: 'Configuracion', icon: Settings }
 ]
+
+// The Fidelidad entry is an optional add-on: it only appears once the loyalty
+// feature has been activated, and sits just after Clientes.
+const loyaltyItem = { to: '/loyalty', label: 'Fidelidad', icon: Gift }
 
 interface AppSidebarProps {
   /** Whether the mobile (portrait) drawer is open. Ignored in landscape. */
@@ -43,6 +49,12 @@ export function AppSidebar({ drawerOpen = false, onNavigate }: AppSidebarProps):
     () => localStorage.getItem('sidebar_collapsed') === 'true'
   )
   const navigate = useNavigate()
+  const { status } = useLoyalty()
+
+  // Insert Fidelidad right after Clientes when the add-on is active.
+  const items = status.enabled
+    ? navItems.flatMap((item) => (item.to === '/customers' ? [item, loyaltyItem] : [item]))
+    : navItems
 
   const toggleCollapsed = (): void => {
     setCollapsed((prev) => {
@@ -122,7 +134,7 @@ export function AppSidebar({ drawerOpen = false, onNavigate }: AppSidebarProps):
           <ShoppingCart className="h-4 w-4 shrink-0" />
           <span className={cn('truncate', collapsed && 'landscape:hidden')}>Punto de Venta</span>
         </button>
-        {navItems.map((item) => (
+        {items.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

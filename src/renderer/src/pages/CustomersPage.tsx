@@ -12,8 +12,9 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency'
-import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft, Star, Ticket } from 'lucide-react'
 import { format } from 'date-fns'
+import { useLoyalty } from '@/hooks/useLoyalty'
 
 interface Customer {
   id: number
@@ -82,6 +83,9 @@ export default function CustomersPage(): JSX.Element {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [balances, setBalances] = useState<Record<number, number>>({})
+  const [loyaltySummary, setLoyaltySummary] = useState<
+    Record<number, { points: number; entries: number }>
+  >({})
   const [criticalThreshold, setCriticalThreshold] = useState(40)
   const [debtDialogOpen, setDebtDialogOpen] = useState(false)
   const [debtCustomer, setDebtCustomer] = useState<Customer | null>(null)
@@ -99,6 +103,8 @@ export default function CustomersPage(): JSX.Element {
   const [invoiceDetail, setInvoiceDetail] = useState<InvoiceDetail | null>(null)
   const [invoiceDetailPending, setInvoiceDetailPending] = useState(0)
 
+  const { status: loyalty } = useLoyalty()
+
   const loadCustomers = useCallback(async () => {
     const [customersData, balancesData] = await Promise.all([
       window.api.getCustomers(search || undefined),
@@ -107,6 +113,21 @@ export default function CustomersPage(): JSX.Element {
     setCustomers(customersData)
     setBalances(balancesData)
   }, [search])
+
+  // Points / raffle entries per customer, loaded only when the add-on is on.
+  useEffect(() => {
+    if (!loyalty.enabled) {
+      setLoyaltySummary({})
+      return
+    }
+    void (async () => {
+      const s = (await window.api.getLoyaltySummaryByCustomer()) as Record<
+        number,
+        { points: number; entries: number }
+      >
+      setLoyaltySummary(s)
+    })()
+  }, [loyalty.enabled])
 
   useEffect(() => {
     setCustomerPage(1)
@@ -347,6 +368,11 @@ export default function CustomersPage(): JSX.Element {
                     <th className="text-left p-3 font-medium">RIF / Cedula</th>
                     <th className="text-left p-3 font-medium">Telefono</th>
                     <th className="text-left p-3 font-medium">Email</th>
+                    {loyalty.enabled && (
+                      <th className="text-center p-3 font-medium">
+                        {loyalty.raffle_enabled ? 'Puntos / Rifa' : 'Puntos'}
+                      </th>
+                    )}
                     <th className="text-center p-3 font-medium">Estado</th>
                     <th className="text-center p-3 font-medium">Acciones</th>
                   </tr>
@@ -358,6 +384,22 @@ export default function CustomersPage(): JSX.Element {
                       <td className="p-3">{c.id_rif || '-'}</td>
                       <td className="p-3">{c.phone || '-'}</td>
                       <td className="p-3">{c.email || '-'}</td>
+                      {loyalty.enabled && (
+                        <td className="p-3 text-center">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 font-medium">
+                              <Star className="h-3.5 w-3.5 text-amber-500" />
+                              {loyaltySummary[c.id]?.points ?? 0}
+                            </span>
+                            {loyalty.raffle_enabled && (
+                              <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                <Ticket className="h-3.5 w-3.5" />
+                                {loyaltySummary[c.id]?.entries ?? 0}
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                      )}
                       <td className="p-3 text-center">
                         {(() => {
                           const badge = getDebtBadge(c.id)
@@ -379,7 +421,7 @@ export default function CustomersPage(): JSX.Element {
                   ))}
                   {paged.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                      <td colSpan={loyalty.enabled ? 7 : 6} className="p-8 text-center text-muted-foreground">
                         {customers.length === 0 ? 'No hay clientes registrados.' : 'Sin resultados para el filtro seleccionado.'}
                       </td>
                     </tr>
@@ -408,6 +450,25 @@ export default function CustomersPage(): JSX.Element {
                       <span className="text-muted-foreground">Email</span>
                       <span className="font-medium text-foreground">{c.email || '-'}</span>
                     </div>
+                    {loyalty.enabled && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">
+                          {loyalty.raffle_enabled ? 'Puntos / Rifa' : 'Puntos'}
+                        </span>
+                        <span className="inline-flex items-center gap-2 font-medium text-foreground">
+                          <span className="inline-flex items-center gap-1">
+                            <Star className="h-3.5 w-3.5 text-amber-500" />
+                            {loyaltySummary[c.id]?.points ?? 0}
+                          </span>
+                          {loyalty.raffle_enabled && (
+                            <span className="inline-flex items-center gap-1 text-muted-foreground">
+                              <Ticket className="h-3.5 w-3.5" />
+                              {loyaltySummary[c.id]?.entries ?? 0}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-end gap-1 pt-1 border-t">
                       <Button variant="ghost" size="icon" onClick={() => openDebt(c)} title="Ver deuda">
                         <Wallet className="h-4 w-4" />

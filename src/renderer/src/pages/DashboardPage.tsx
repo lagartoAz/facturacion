@@ -141,6 +141,24 @@ export default function DashboardPage(): JSX.Element {
     setPeriodTo(format(endOfYear(new Date()), 'yyyy-MM-dd'))
   }
 
+  // Which quick-filter preset matches the current period, so it can be
+  // highlighted. Home opens on "Hoy" by default.
+  const activePreset = ((): string => {
+    const today = format(new Date(), 'yyyy-MM-dd')
+    if (periodFrom === today && periodTo === today) return 'hoy'
+    const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+    if (periodFrom === yesterday && periodTo === yesterday) return 'ayer'
+    if (periodTo === today && periodFrom === format(subDays(new Date(), 7), 'yyyy-MM-dd')) return '7'
+    if (periodTo === today && periodFrom === format(subDays(new Date(), 30), 'yyyy-MM-dd'))
+      return '30'
+    if (
+      periodFrom === format(startOfYear(new Date()), 'yyyy-MM-dd') &&
+      periodTo === format(endOfYear(new Date()), 'yyyy-MM-dd')
+    )
+      return 'year'
+    return ''
+  })()
+
   return (
     <div className="p-4 landscape:p-6 space-y-6">
       <div className="flex flex-col gap-3 landscape:flex-row landscape:items-center landscape:justify-between">
@@ -170,11 +188,11 @@ export default function DashboardPage(): JSX.Element {
           <label className="text-xs text-muted-foreground">Hasta</label>
           <Input type="date" value={periodTo} onChange={(e) => setPeriodTo(e.target.value)} className="w-40" />
         </div>
-        <Button variant="outline" size="sm" onClick={setToday}>Hoy</Button>
-        <Button variant="outline" size="sm" onClick={setYesterday}>Ayer</Button>
-        <Button variant="outline" size="sm" onClick={() => setLastDays(7)}>7 dias</Button>
-        <Button variant="outline" size="sm" onClick={() => setLastDays(30)}>30 dias</Button>
-        <Button variant="outline" size="sm" onClick={setYear}>Año</Button>
+        <Button variant={activePreset === 'hoy' ? 'default' : 'outline'} size="sm" onClick={setToday}>Hoy</Button>
+        <Button variant={activePreset === 'ayer' ? 'default' : 'outline'} size="sm" onClick={setYesterday}>Ayer</Button>
+        <Button variant={activePreset === '7' ? 'default' : 'outline'} size="sm" onClick={() => setLastDays(7)}>7 dias</Button>
+        <Button variant={activePreset === '30' ? 'default' : 'outline'} size="sm" onClick={() => setLastDays(30)}>30 dias</Button>
+        <Button variant={activePreset === 'year' ? 'default' : 'outline'} size="sm" onClick={setYear}>Año</Button>
       </div>
 
       {/* Summary cards */}

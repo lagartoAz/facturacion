@@ -6,6 +6,12 @@ export interface DailySale {
   count: number
 }
 
+export interface HourlySale {
+  hour: string
+  total: number
+  count: number
+}
+
 export interface TopProduct {
   name: string
   quantity: number
@@ -77,6 +83,18 @@ export class ReportService {
          ORDER BY day ASC`
       )
       .all(from, to) as DailySale[]
+  }
+
+  hourlySales(day: string): HourlySale[] {
+    return this.db
+      .prepare(
+        `SELECT strftime('%H', created_at) as hour, SUM(total_usd) as total, COUNT(*) as count
+         FROM invoices
+         WHERE status = 'completed' AND date(created_at) = ?
+         GROUP BY hour
+         ORDER BY hour ASC`
+      )
+      .all(day) as HourlySale[]
   }
 
   topProducts(from: string, to: string, limit = 10): TopProduct[] {

@@ -13,6 +13,7 @@ import {
   type RestoreInfo
 } from './database/recovery'
 import { registerAllHandlers } from './ipc'
+import { syncLoyaltyLicense } from './ipc/loyalty.ipc'
 import { captureHandlers } from './server/handler-registry'
 import { startRpcServer } from './server/rpc-server'
 import { registerClientHandlers, tryAutoConnect } from './client/client-proxy'
@@ -212,6 +213,10 @@ app.whenReady().then(() => {
 
   // Register IPC handlers (while recording them so the LAN server can reuse them)
   captureHandlers(() => registerAllHandlers(db))
+
+  // Reconcile the loyalty feature flag with its license file, so dropping the
+  // complement installer's license into userData turns the add-on on at launch.
+  syncLoyaltyLicense(db)
 
   // On the primary (server) build, expose the database to other PCs on the LAN.
   if (getRole() === 'server' && getNetworkConfig().serverEnabled) {

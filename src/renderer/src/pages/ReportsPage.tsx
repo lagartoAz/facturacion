@@ -21,6 +21,12 @@ interface DailySale {
   count: number
 }
 
+interface HourlySale {
+  hour: string
+  total: number
+  count: number
+}
+
 interface TopProduct {
   name: string
   quantity: number
@@ -38,6 +44,7 @@ export default function ReportsPage(): JSX.Element {
   const [dateFrom, setDateFrom] = useState(format(startOfYear(new Date()), 'yyyy-MM-dd'))
   const [dateTo, setDateTo] = useState(format(endOfYear(new Date()), 'yyyy-MM-dd'))
   const [dailySales, setDailySales] = useState<DailySale[]>([])
+  const [hourlySales, setHourlySales] = useState<HourlySale[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [showAllProducts, setShowAllProducts] = useState(false)
   const [summary, setSummary] = useState<Summary>({
@@ -50,16 +57,54 @@ export default function ReportsPage(): JSX.Element {
     loadData()
   }, [dateFrom, dateTo, showAllProducts])
 
+  // When a single day is selected (by date range or the "Hoy"/"Ayer" buttons)
+  // the chart switches to an hour-by-hour breakdown instead of calendar days.
+  const isSingleDay = dateFrom === dateTo
+
   async function loadData(): Promise<void> {
-    const [sales, products, sum] = await Promise.all([
-      window.api.getDailySales(dateFrom, dateTo),
+    const [sales, hourly, products, sum] = await Promise.all([
+      isSingleDay ? Promise.resolve([]) : window.api.getDailySales(dateFrom, dateTo),
+      isSingleDay ? window.api.getHourlySales(dateFrom) : Promise.resolve([]),
       window.api.getTopProducts(dateFrom, dateTo, showAllProducts ? 99999 : 10),
       window.api.getSalesSummary(dateFrom, dateTo)
     ])
-    setDailySales(sales)
+    setDailySales(sales as DailySale[])
+    setHourlySales(hourly as HourlySale[])
     setTopProducts(products)
     setSummary(sum)
   }
+
+  // Fill the gaps between the first and last hour with sales so the bars sit on
+  // a continuous timeline (e.g. 08:00 → 20:00) instead of skipping empty hours.
+  const hourlyChartData = ((): HourlySale[] => {
+    if (hourlySales.length === 0) return []
+    const hours = hourlySales.map((h) => parseInt(h.hour, 10))
+    const min = Math.min(...hours)
+    const max = Math.max(...hours)
+    const byHour = new Map(hourlySales.map((h) => [parseInt(h.hour, 10), h]))
+    const filled: HourlySale[] = []
+    for (let h = min; h <= max; h++) {
+      const label = String(h).padStart(2, '0')
+      filled.push(byHour.get(h) ?? { hour: label, total: 0, count: 0 })
+    }
+    return filled
+  })()
+
+  // Which quick-filter preset matches the current range, so it can be highlighted.
+  const activePreset = ((): string => {
+    const today = format(new Date(), 'yyyy-MM-dd')
+    if (dateFrom === today && dateTo === today) return 'hoy'
+    const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+    if (dateFrom === yesterday && dateTo === yesterday) return 'ayer'
+    if (dateTo === today && dateFrom === format(subDays(new Date(), 7), 'yyyy-MM-dd')) return '7'
+    if (dateTo === today && dateFrom === format(subDays(new Date(), 30), 'yyyy-MM-dd')) return '30'
+    if (
+      dateFrom === format(startOfYear(new Date()), 'yyyy-MM-dd') &&
+      dateTo === format(endOfYear(new Date()), 'yyyy-MM-dd')
+    )
+      return 'year'
+    return ''
+  })()
 
   return (
     <div className="p-4 landscape:p-6 space-y-6">
@@ -85,7 +130,7 @@ export default function ReportsPage(): JSX.Element {
           />
         </div>
         <Button
-          variant="outline"
+          variant={activePreset === 'hoy' ? 'default' : 'outline'}
           onClick={() => {
             const today = format(new Date(), 'yyyy-MM-dd')
             setDateFrom(today)
@@ -95,7 +140,7 @@ export default function ReportsPage(): JSX.Element {
           Hoy
         </Button>
         <Button
-          variant="outline"
+          variant={activePreset === 'ayer' ? 'default' : 'outline'}
           onClick={() => {
             const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd')
             setDateFrom(yesterday)
@@ -105,7 +150,7 @@ export default function ReportsPage(): JSX.Element {
           Ayer
         </Button>
         <Button
-          variant="outline"
+          variant={activePreset === '7' ? 'default' : 'outline'}
           onClick={() => {
             setDateFrom(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
             setDateTo(format(new Date(), 'yyyy-MM-dd'))
@@ -114,7 +159,7 @@ export default function ReportsPage(): JSX.Element {
           7 dias
         </Button>
         <Button
-          variant="outline"
+          variant={activePreset === '30' ? 'default' : 'outline'}
           onClick={() => {
             setDateFrom(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
             setDateTo(format(new Date(), 'yyyy-MM-dd'))
@@ -123,7 +168,7 @@ export default function ReportsPage(): JSX.Element {
           30 dias
         </Button>
         <Button
-          variant="outline"
+          variant={activePreset === 'year' ? 'default' : 'outline'}
           onClick={() => {
             setDateFrom(format(startOfYear(new Date()), 'yyyy-MM-dd'))
             setDateTo(format(endOfYear(new Date()), 'yyyy-MM-dd'))
@@ -164,13 +209,39 @@ export default function ReportsPage(): JSX.Element {
         </Card>
       </div>
 
-      {/* Daily sales chart */}
+      {/* Sales chart — by hour for a single day, by date for a range */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Ventas Diarias</CardTitle>
+          <CardTitle className="text-lg">
+            {isSingleDay ? 'Ventas por Hora' : 'Ventas Diarias'}
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {dailySales.length > 0 ? (
+          {isSingleDay ? (
+            hourlySales.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={hourlyChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="hour"
+                    tickFormatter={(v) => `${v}:00`}
+                    fontSize={12}
+                    interval={1}
+                  />
+                  <YAxis fontSize={12} tickFormatter={(v) => `$${v}`} />
+                  <Tooltip
+                    formatter={(value: number) => [formatUSD(value), 'Total']}
+                    labelFormatter={(label) => `${label}:00 - ${label}:59`}
+                  />
+                  <Bar dataKey="total" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-center text-muted-foreground py-8">
+                No hay ventas en el dia seleccionado
+              </p>
+            )
+          ) : dailySales.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={dailySales}>
                 <CartesianGrid strokeDasharray="3 3" />

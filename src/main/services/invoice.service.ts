@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import { SettingsService } from './settings.service'
+import { LoyaltyService } from './loyalty.service'
 
 export interface InvoiceItem {
   productId?: number
@@ -70,9 +71,11 @@ export interface InvoiceFilters {
 
 export class InvoiceService {
   private settingsService: SettingsService
+  private loyaltyService: LoyaltyService
 
   constructor(private db: Database.Database) {
     this.settingsService = new SettingsService(db)
+    this.loyaltyService = new LoyaltyService(db)
   }
 
   create(data: CreateInvoiceDTO): Invoice {
@@ -159,6 +162,25 @@ export class InvoiceService {
           }
         }
       }
+
+      // Accrue loyalty points for the sale (no-op unless the add-on is active).
+      // Resolve the sale currency so the "solo en una divisa" rule can filter.
+      const currency =
+        data.paymentMethod === 'cash'
+          ? data.cashCurrency || 'USD'
+          : data.paymentAmountCop
+            ? 'COP'
+            : data.paymentAmountVes
+              ? 'VES'
+              : 'USD'
+      this.loyaltyService.earnForInvoice({
+        customerId: data.customerId || null,
+        invoiceId: Number(invoiceId),
+        totalUsd: total,
+        paymentMethod: data.paymentMethod,
+        currency,
+        items: data.items.map((i) => ({ productId: i.isCustom ? null : i.productId, quantity: i.quantity }))
+      })
 
       return this.getById(Number(invoiceId))!
     })

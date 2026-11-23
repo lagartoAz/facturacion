@@ -389,4 +389,86 @@ export function runMigrations(db: Database.Database): void {
     db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('critical_debt_threshold', '40')").run()
     db.pragma('user_version = 19')
   }
+
+  if (version < 20) {
+    // Loyalty points add-on ("Fidelidad"). The schema always ships with the base
+    // app, but the feature stays dormant until it is activated with a license
+    // (see loyalty_enabled). The ledger is append-only: every earn/redeem is one
+    // row, so a customer's balance is just SUM(points) over their rows.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS loyalty_ledger (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        invoice_id  INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+        points      INTEGER NOT NULL,
+        type        TEXT NOT NULL CHECK (type IN ('earn', 'redeem', 'adjust')),
+        note        TEXT,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_loyalty_customer ON loyalty_ledger(customer_id);
+      CREATE INDEX IF NOT EXISTS idx_loyalty_invoice ON loyalty_ledger(invoice_id);
+    `)
+    // Config defaults. loyalty_enabled is the single source of truth for whether
+    // the feature is on; activation flips it to '1'. The others are the earning
+    // rate (points per 1 USD spent) and the USD value of 1 point when redeemed.
+    db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('loyalty_enabled', '0')").run()
+    db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('loyalty_points_per_usd', '1')").run()
+    db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('loyalty_redeem_value_usd', '0.01')").run()
+    db.pragma('user_version = 20')
+  }
+
+  if (version < 21) {
+    // Loyalty v2: configurable earning rules, a rewards catalog and a raffle.
+    // Points stay the single currency (loyalty_ledger); the raffle derives
+    // entries from a customer's points, and rewards are redeemed for points.
+    db.exec(`
+      -- Points granted per unit of a given product (the "por producto" rule).
+      CREATE TABLE IF NOT EXISTS loyalty_product_points (
+        product_id INTEGER PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE,
+        points     INTEGER NOT NULL DEFAULT 0
+      );
+
+      -- Catalogue of things a customer can redeem points for.
+      CREATE TABLE IF NOT EXISTS loyalty_rewards (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT NOT NULL,
+        kind        TEXT NOT NULL CHECK (kind IN ('discount_usd', 'discount_pct', 'custom')),
+        cost_points INTEGER NOT NULL CHECK (cost_points > 0),
+        value       REAL NOT NULL DEFAULT 0,
+        active       INTEGER NOT NULL DEFAULT 1,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+
+      -- Raffles. Only one is 'open' at a time; drawing one records the winner.
+      CREATE TABLE IF NOT EXISTS loyalty_raffles (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        name               TEXT NOT NULL,
+        status             TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'drawn')),
+        points_per_entry   INTEGER NOT NULL DEFAULT 0,
+        min_points         INTEGER NOT NULL DEFAULT 0,
+        winner_customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+        winner_name        TEXT,
+        drawn_at           TEXT,
+        created_at         TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+    `)
+
+    // Earning rules (all additive; each has its own switch).
+    const def = (k: string, v: string): void => {
+      db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(k, v)
+    }
+    def('loyalty_earn_money', '1') // 1 pt per USD spent (uses loyalty_points_per_usd)
+    def('loyalty_earn_product', '0') // points per product (uses loyalty_product_points)
+    def('loyalty_earn_invoice', '0') // flat points per finalized invoice
+    def('loyalty_points_per_invoice', '0')
+    def('loyalty_currency_filter', '') // '' | USD | VES | COP — only count sales in this currency
+    def('loyalty_exclude_credit', '1') // don't earn on credit invoices
+    // Rewards / raffle toggles.
+    def('loyalty_rewards_enabled', '1')
+    def('loyalty_raffle_enabled', '0')
+    def('loyalty_raffle_points_per_entry', '0') // every N points = 1 extra entry (0 = single entry)
+    def('loyalty_raffle_min_points', '0') // minimum points to take part
+    db.pragma('user_version = 21')
+  }
 }

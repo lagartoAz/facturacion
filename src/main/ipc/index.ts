@@ -16,6 +16,7 @@ import { registerSupplierHandlers } from './suppliers.ipc'
 import { registerPurchaseHandlers } from './purchases.ipc'
 import { registerNetworkHandlers } from './network.ipc'
 import { registerEscposHandlers } from './escpos.ipc'
+import { registerLoyaltyHandlers } from './loyalty.ipc'
 
 export function registerAllHandlers(db: Database.Database): void {
   registerProductHandlers(db)
@@ -35,4 +36,5 @@ export function registerAllHandlers(db: Database.Database): void {
   registerPurchaseHandlers(db)
   registerNetworkHandlers()
   registerEscposHandlers()
+  registerLoyaltyHandlers(db)
 }
