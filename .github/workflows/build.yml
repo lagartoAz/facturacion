@@ -29,6 +29,19 @@ jobs:
       - name: Package CLIENT (Acceso)
         run: npm run dist:client -- --win --publish never
 
+      - name: Build Fidelidad activator (.exe)
+        working-directory: installers
+        shell: pwsh
+        run: |
+          $nsis = Get-Command makensis -ErrorAction SilentlyContinue
+          if (-not $nsis) { choco install nsis -y --no-progress }
+          $exe = @(
+            'makensis',
+            "$env:ProgramFiles\NSIS\makensis.exe",
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          ) | Where-Object { (Get-Command $_ -ErrorAction SilentlyContinue) -or (Test-Path $_) } | Select-Object -First 1
+          & $exe complemento-fidelidad.nsi
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -36,6 +49,7 @@ jobs:
           files: |
             dist/*.exe
             dist-client/*.exe
+            installers/InstalarComplementoFidelidad.exe
           draft: false
           generate_release_notes: true
         env:
