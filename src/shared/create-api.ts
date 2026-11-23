@@ -89,11 +89,16 @@ export function createApi(invoke: Invoke) {
     voidInvoice: (id: number) => invoke('invoices:void', id),
 
     // Reports
-    getDailySales: (from: string, to: string) => invoke('reports:dailySales', from, to),
-    getHourlySales: (day: string) => invoke('reports:hourlySales', day),
+    getDailySales: (from: string, to: string, customerId?: number) =>
+      invoke('reports:dailySales', from, to, customerId),
+    getHourlySales: (day: string, customerId?: number) =>
+      invoke('reports:hourlySales', day, customerId),
     getTopProducts: (from: string, to: string, limit?: number) =>
       invoke('reports:topProducts', from, to, limit),
-    getSalesSummary: (from: string, to: string) => invoke('reports:summary', from, to),
+    getSalesSummary: (from: string, to: string, customerId?: number) =>
+      invoke('reports:summary', from, to, customerId),
+    getMonthlySales: (from: string, to: string, customerId?: number) =>
+      invoke('reports:monthlySales', from, to, customerId),
     getProductStats: (productId: number) => invoke('reports:productStats', productId),
 
     // Loyalty points add-on ("Fidelidad")
@@ -104,6 +109,10 @@ export function createApi(invoke: Invoke) {
     getLoyaltyBalance: (customerId: number) => invoke('loyalty:balance', customerId),
     getLoyaltyBalances: () => invoke('loyalty:allBalances'),
     getLoyaltySummaryByCustomer: () => invoke('loyalty:summaryByCustomer'),
+    getLoyaltyPointsByInvoice: () => invoke('loyalty:pointsByInvoice'),
+    getInvoiceTickets: (invoiceId: number) => invoke('loyalty:ticketsForInvoice', invoiceId),
+    markTicketsPrinted: (invoiceId: number) => invoke('loyalty:markTicketsPrinted', invoiceId),
+    getTicketsPrintedIds: () => invoke('loyalty:ticketsPrintedIds'),
     getLoyaltyHistory: (customerId: number, limit?: number) =>
       invoke('loyalty:history', customerId, limit),
     redeemLoyaltyPoints: (customerId: number, points: number, note?: string) =>
@@ -123,6 +132,22 @@ export function createApi(invoke: Invoke) {
     deleteLoyaltyReward: (id: number) => invoke('loyalty:deleteReward', id),
     redeemLoyaltyReward: (customerId: number, rewardId: number) =>
       invoke('loyalty:redeemReward', customerId, rewardId),
+    getActiveCoupons: (customerId: number) => invoke('loyalty:activeCoupons', customerId),
+    getAllCoupons: (customerId: number) => invoke('loyalty:allCoupons', customerId),
+    getAffordableDiscountRewards: (customerId: number) =>
+      invoke('loyalty:affordableDiscountRewards', customerId),
+    previewSaleLoyalty: (ctx: Record<string, unknown>) => invoke('loyalty:previewSale', ctx),
+    getInvoiceLoyaltySummary: (invoiceId: number) => invoke('loyalty:invoiceSummary', invoiceId),
+    getLoyaltyDailyPoints: (from: string, to: string, customerId?: number) =>
+      invoke('loyalty:dailyPoints', from, to, customerId),
+    getLoyaltyHourlyPoints: (day: string, customerId?: number) =>
+      invoke('loyalty:hourlyPoints', day, customerId),
+    getLoyaltyPointsSummary: (from: string, to: string, customerId?: number) =>
+      invoke('loyalty:pointsSummary', from, to, customerId),
+    getLoyaltyMonthlyPoints: (from: string, to: string, customerId?: number) =>
+      invoke('loyalty:monthlyPoints', from, to, customerId),
+    getLoyaltyTopProductsByPoints: (from: string, to: string, limit?: number) =>
+      invoke('loyalty:topProductsByPoints', from, to, limit),
     // Raffle
     getActiveRaffle: () => invoke('loyalty:activeRaffle'),
     listRaffles: () => invoke('loyalty:listRaffles'),

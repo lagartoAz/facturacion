@@ -6,32 +6,13 @@ import { Save } from 'lucide-react'
 import { useLoyalty, type LoyaltyStatus } from '@/hooks/useLoyalty'
 import { Toggle } from './controls'
 
-interface Product {
-  id: number
-  name: string
-}
-
 const CURRENCIES = ['', 'USD', 'VES', 'COP']
 
 export default function LoyaltyRules(): JSX.Element {
   const { status, refresh } = useLoyalty()
   const [cfg, setCfg] = useState<LoyaltyStatus>(status)
-  const [products, setProducts] = useState<Product[]>([])
-  const [productPoints, setProductPoints] = useState<Record<number, number>>({})
-  const [productSearch, setProductSearch] = useState('')
 
   useEffect(() => setCfg(status), [status])
-
-  useEffect(() => {
-    void (async () => {
-      const [prods, pp] = await Promise.all([
-        window.api.getProducts() as Promise<Product[]>,
-        window.api.getLoyaltyProductPoints() as Promise<{ product_id: number; points: number }[]>
-      ])
-      setProducts(prods)
-      setProductPoints(Object.fromEntries(pp.map((p) => [p.product_id, p.points])))
-    })()
-  }, [])
 
   const upd = <K extends keyof LoyaltyStatus>(key: K, value: LoyaltyStatus[K]): void =>
     setCfg((c) => ({ ...c, [key]: value }))
@@ -48,21 +29,13 @@ export default function LoyaltyRules(): JSX.Element {
       rewards_enabled: cfg.rewards_enabled,
       raffle_enabled: cfg.raffle_enabled,
       raffle_points_per_entry: cfg.raffle_points_per_entry,
-      raffle_min_points: cfg.raffle_min_points
+      raffle_min_points: cfg.raffle_min_points,
+      exclude_red_debtors: cfg.exclude_red_debtors,
+      tickets_enabled: cfg.tickets_enabled
     })
     await refresh()
     alert('Reglas guardadas')
   }
-
-  async function saveProductPoints(productId: number, value: string): Promise<void> {
-    const pts = parseInt(value, 10) || 0
-    setProductPoints((m) => ({ ...m, [productId]: pts }))
-    await window.api.setLoyaltyProductPoints(productId, pts)
-  }
-
-  const shownProducts = products.filter((p) =>
-    p.name.toLowerCase().includes(productSearch.toLowerCase())
-  )
 
   return (
     <div className="space-y-6">
@@ -118,7 +91,7 @@ export default function LoyaltyRules(): JSX.Element {
 
           <Toggle
             label="Por producto"
-            hint="Cada producto otorga sus propios puntos (configúralos abajo)"
+            hint="Cada producto otorga sus propios puntos (se editan en cada producto, en Productos)"
             checked={cfg.earn_product}
             onChange={(v) => upd('earn_product', v)}
           />
@@ -207,6 +180,18 @@ export default function LoyaltyRules(): JSX.Element {
                   className="w-28"
                 />
               </div>
+              <Toggle
+                label="Bloquear deudores en rojo"
+                hint="Un cliente deudor crítico (rojo) no participa aunque tenga puntos"
+                checked={cfg.exclude_red_debtors}
+                onChange={(v) => upd('exclude_red_debtors', v)}
+              />
+              <Toggle
+                label="Tickets físicos imprimibles"
+                hint="Imprime tickets por compra para un pote físico (se pueden imprimir luego desde Facturas)"
+                checked={cfg.tickets_enabled}
+                onChange={(v) => upd('tickets_enabled', v)}
+              />
             </div>
           )}
         </CardContent>
@@ -219,42 +204,11 @@ export default function LoyaltyRules(): JSX.Element {
         </Button>
       </div>
 
-      {/* Per-product points */}
       {cfg.earn_product && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Puntos por producto</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Puntos otorgados por cada unidad vendida. Deja 0 para no dar puntos.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Input
-              placeholder="Buscar producto…"
-              value={productSearch}
-              onChange={(e) => setProductSearch(e.target.value)}
-              className="max-w-xs"
-            />
-            <div className="max-h-96 divide-y overflow-y-auto rounded-lg border">
-              {shownProducts.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-3 p-2">
-                  <span className="truncate text-sm">{p.name}</span>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    defaultValue={productPoints[p.id] ?? 0}
-                    onBlur={(e) => void saveProductPoints(p.id, e.target.value)}
-                    className="w-24"
-                  />
-                </div>
-              ))}
-              {shownProducts.length === 0 && (
-                <p className="p-4 text-center text-sm text-muted-foreground">Sin productos</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <p className="text-sm text-muted-foreground">
+          Los puntos de cada producto se configuran al editar el producto, en la sección
+          <strong> Productos</strong>.
+        </p>
       )}
     </div>
   )

@@ -499,8 +499,6 @@ export default function SettingsPage(): JSX.Element {
     <div className="p-4 landscape:p-6 space-y-6 max-w-2xl">
       <h1 className="text-2xl font-bold">Configuracion</h1>
 
-      <LoyaltyActivationCard />
-
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Apariencia</CardTitle>
@@ -1419,6 +1417,9 @@ export default function SettingsPage(): JSX.Element {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Add-on status lives at the very end of Settings. */}
+      <LoyaltyActivationCard />
 
       <div className="text-center text-sm text-muted-foreground pt-4">
         App desarrollada por El Garaje Gamer · v{APP_VERSION}

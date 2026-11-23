@@ -52,9 +52,38 @@ import {
   Camera,
   User,
   MessageCircle,
-  AlertTriangle
+  AlertTriangle,
+  Ticket,
+  Tag,
+  X,
+  Star
 } from 'lucide-react'
 import { format } from 'date-fns'
+import { useLoyalty } from '@/hooks/useLoyalty'
+import { printRaffleTickets } from '@/lib/raffle-tickets'
+
+interface CouponOpt {
+  id: number
+  name: string
+  kind: string
+  value: number
+}
+interface RewardOpt {
+  id: number
+  name: string
+  kind: string
+  value: number
+  cost_points: number
+}
+
+// USD discount a coupon/reward yields on a given pre-discount base (mirrors the
+// backend; the backend recomputes authoritatively at checkout).
+function discountOf(kind: string, value: number, base: number): number {
+  if (base <= 0) return 0
+  let d = kind === 'discount_usd' ? value : kind === 'discount_pct' ? (base * value) / 100 : 0
+  d = Math.round(d * 100) / 100
+  return Math.min(Math.max(d, 0), base)
+}
 
 interface Product {
   id: number
@@ -82,6 +111,7 @@ interface CompletedInvoice {
   customer_name: string | null
   subtotal_usd: number
   total_usd: number
+  discount_usd?: number
   rate_ves: number | null
   rate_cop: number | null
   total_ves: number | null
@@ -194,6 +224,20 @@ export default function PosPage(): JSX.Element {
   const [paymentCop, setPaymentCop] = useState('')
   const [mixedPayments, setMixedPayments] = useState({ cash: '', card: '', transfer: '', credit: '' })
   const [notification, setNotification] = useState('')
+  const { status: loyalty } = useLoyalty()
+  const [pendingTickets, setPendingTickets] = useState<{
+    count: number
+    printed: boolean
+    points: number
+  }>({ count: 0, printed: false, points: 0 })
+  const [couponDialogOpen, setCouponDialogOpen] = useState(false)
+  const [activeCoupons, setActiveCoupons] = useState<CouponOpt[]>([])
+  const [affordableRewards, setAffordableRewards] = useState<RewardOpt[]>([])
+  const [selectedCoupon, setSelectedCoupon] = useState<CouponOpt | null>(null)
+  const [salePreview, setSalePreview] = useState<{ points: number; tickets: number }>({
+    points: 0,
+    tickets: 0
+  })
   const [successDialogOpen, setSuccessDialogOpen] = useState(false)
   const [completedInvoice, setCompletedInvoice] = useState<CompletedInvoice | null>(null)
   const [pendingCarts, setPendingCarts] = useState<PendingCart[]>([])
@@ -512,7 +556,62 @@ export default function PosPage(): JSX.Element {
     }
   }
 
-  const total = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+  const loadCoupons = useCallback(async (customerId: number): Promise<void> => {
+    const [cp, rw] = await Promise.all([
+      window.api.getActiveCoupons(customerId) as Promise<CouponOpt[]>,
+      window.api.getAffordableDiscountRewards(customerId) as Promise<RewardOpt[]>
+    ])
+    setActiveCoupons(cp)
+    setAffordableRewards(rw)
+  }, [])
+
+  // Load the selected customer's coupons / affordable discount rewards; clear any
+  // applied coupon whenever the customer changes.
+  useEffect(() => {
+    setSelectedCoupon(null)
+    if (!loyalty.enabled || !selectedCustomerId) {
+      setActiveCoupons([])
+      setAffordableRewards([])
+      return
+    }
+    void loadCoupons(selectedCustomerId)
+  }, [loyalty.enabled, selectedCustomerId, loadCoupons])
+
+  // Live preview of the points / raffle tickets the current cart will grant the
+  // selected customer (uses the backend so it matches the real earning rules).
+  useEffect(() => {
+    if (!loyalty.enabled || !selectedCustomerId || cart.length === 0) {
+      setSalePreview({ points: 0, tickets: 0 })
+      return
+    }
+    let cancelled = false
+    const t = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0)
+    const disc = selectedCoupon ? discountOf(selectedCoupon.kind, selectedCoupon.value, t) : 0
+    const currency =
+      paymentMethod === 'cash' ? cashCurrency : paymentCop ? 'COP' : paymentVes ? 'VES' : 'USD'
+    void (async () => {
+      const p = (await window.api.previewSaleLoyalty({
+        customerId: selectedCustomerId,
+        invoiceId: 0,
+        totalUsd: Math.max(0, t - disc),
+        paymentMethod,
+        currency,
+        items: cart.map((i) => ({ productId: i.isCustom ? null : i.productId, quantity: i.quantity }))
+      })) as { points: number; tickets: number }
+      if (!cancelled) setSalePreview(p)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [loyalty.enabled, selectedCustomerId, cart, selectedCoupon, paymentMethod, cashCurrency, paymentVes, paymentCop])
+
+  const subtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
+  const couponDiscount = selectedCoupon
+    ? discountOf(selectedCoupon.kind, selectedCoupon.value, subtotal)
+    : 0
+  // `total` is the amount actually due (after the coupon); the rest of the POS
+  // keeps using it for payments, equivalents and the mixed-payment check.
+  const total = Math.max(0, subtotal - couponDiscount)
 
   async function handleConfirmPayment(): Promise<void> {
     if (paymentMethod === 'credit' && !selectedCustomerId) {
@@ -550,7 +649,8 @@ export default function PosPage(): JSX.Element {
         paymentMethod,
         cashCurrency: paymentMethod === 'cash' ? cashCurrency : undefined,
         paymentAmountVes: (paymentMethod === 'card' || (paymentMethod === 'transfer' && transferCurrency === 'VES')) && paymentVes ? parseFloat(paymentVes) || undefined : undefined,
-        paymentAmountCop: paymentMethod === 'transfer' && transferCurrency === 'COP' && paymentCop ? parseFloat(paymentCop) || undefined : undefined
+        paymentAmountCop: paymentMethod === 'transfer' && transferCurrency === 'COP' && paymentCop ? parseFloat(paymentCop) || undefined : undefined,
+        couponId: selectedCoupon?.id
       }
       if (paymentMethod === 'mixed') {
         invoiceData.payments = [
@@ -571,6 +671,7 @@ export default function PosPage(): JSX.Element {
 
       setCart([])
       setSelectedCustomerId(null)
+      setSelectedCoupon(null)
       setPaymentDialogOpen(false)
       setPaymentMethod('cash')
       setCashCurrency('USD')
@@ -584,11 +685,64 @@ export default function PosPage(): JSX.Element {
         handlePrintInvoice(fullInvoice)
       }
 
+      // Loyalty earned on this sale: shown in the success dialog, plus the ticket
+      // print offer when physical tickets are enabled.
+      setPendingTickets({ count: 0, printed: false, points: 0 })
+      if (loyalty.enabled) {
+        const s = (await window.api.getInvoiceLoyaltySummary(fullInvoice.id)) as {
+          points: number
+          tickets: number
+        }
+        setPendingTickets({
+          count: loyalty.tickets_enabled ? s.tickets : 0,
+          printed: false,
+          points: s.points
+        })
+      }
+
       // Reload rates in case they changed
       const newRates = await window.api.getExchangeRates()
       setRates(newRates)
     } catch (err) {
       showNotification(`Error: ${(err as Error).message}`)
+    }
+  }
+
+  function applyExistingCoupon(c: CouponOpt): void {
+    setSelectedCoupon(c)
+    setCouponDialogOpen(false)
+  }
+
+  async function redeemAndApply(r: RewardOpt): Promise<void> {
+    if (!selectedCustomerId) return
+    try {
+      const res = (await window.api.redeemLoyaltyReward(selectedCustomerId, r.id)) as {
+        coupon: CouponOpt | null
+      }
+      if (res.coupon) {
+        setSelectedCoupon({
+          id: res.coupon.id,
+          name: res.coupon.name,
+          kind: res.coupon.kind,
+          value: res.coupon.value
+        })
+      }
+      await loadCoupons(selectedCustomerId)
+      setCouponDialogOpen(false)
+      showNotification(`Cupón activado: ${r.name}`)
+    } catch (e) {
+      showNotification((e as Error).message || 'No se pudo canjear')
+    }
+  }
+
+  async function handlePrintTickets(): Promise<void> {
+    if (!completedInvoice) return
+    const res = await printRaffleTickets(completedInvoice.id)
+    if (res.ok) {
+      setPendingTickets((p) => ({ ...p, printed: true }))
+      showNotification(`${res.count} ticket(s) de rifa impresos`)
+    } else if (res.error) {
+      showNotification(res.error)
     }
   }
 
@@ -650,6 +804,12 @@ export default function PosPage(): JSX.Element {
           ${itemsHtml}
         </table>
         <div class="divider"></div>
+        ${
+          inv.discount_usd && inv.discount_usd > 0
+            ? `<div class="right">Subtotal: ${fmt(inv.subtotal_usd)}</div>
+               <div class="right">Descuento: -${fmt(inv.discount_usd)}</div>`
+            : ''
+        }
         <div class="right bold" style="font-size:${fs + 1}px">TOTAL: ${fmt(inv.total_usd)}</div>
         <div class="divider"></div>
         <div class="center label">Compra en ${summary.title}</div>
@@ -1017,6 +1177,18 @@ export default function PosPage(): JSX.Element {
 
         {/* Totals */}
         <div className="border-t pt-4 mt-4 space-y-2">
+          {couponDiscount > 0 && (
+            <>
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>Subtotal</span>
+                <span>{formatUSD(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Descuento{selectedCoupon ? ` (${selectedCoupon.name})` : ''}</span>
+                <span>-{formatUSD(couponDiscount)}</span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between text-lg font-bold">
             <span>Total USD</span>
             <span>{formatUSD(total)}</span>
@@ -1032,6 +1204,45 @@ export default function PosPage(): JSX.Element {
               <span>Total COP</span>
               <span>{formatCOP(convertCurrency(total, getRate('COP')))}</span>
             </div>
+          )}
+          {loyalty.enabled && selectedCustomerId && (salePreview.points > 0 || salePreview.tickets > 0) && (
+            <div className="mt-2 flex items-center justify-center gap-3 rounded-md bg-muted/40 py-1.5 text-sm">
+              <span className="inline-flex items-center gap-1 font-medium">
+                <Star className="h-4 w-4 text-amber-500" />
+                {salePreview.points} pts
+              </span>
+              {loyalty.raffle_enabled && salePreview.tickets > 0 && (
+                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                  <Ticket className="h-4 w-4" />
+                  {salePreview.tickets} {salePreview.tickets === 1 ? 'cupo' : 'cupos'}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">que ganará</span>
+            </div>
+          )}
+          {loyalty.enabled && selectedCustomerId && (
+            selectedCoupon ? (
+              <div className="mt-3 flex items-center justify-between gap-2 rounded-md border border-green-600/40 bg-green-600/10 p-2 text-sm">
+                <span className="inline-flex items-center gap-1 font-medium text-green-700">
+                  <Tag className="h-4 w-4" />
+                  {selectedCoupon.name}
+                </span>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setSelectedCoupon(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              (activeCoupons.length > 0 || affordableRewards.length > 0) && (
+                <Button
+                  variant="outline"
+                  className="mt-3 w-full"
+                  onClick={() => setCouponDialogOpen(true)}
+                >
+                  <Tag className="mr-2 h-4 w-4" />
+                  Aplicar cupón de descuento
+                </Button>
+              )
+            )
           )}
           {pendingCarts.length > 0 && (
             <Button
@@ -1436,6 +1647,66 @@ export default function PosPage(): JSX.Element {
         </DialogContent>
       </Dialog>
 
+      {/* Coupon selection dialog */}
+      <Dialog open={couponDialogOpen} onOpenChange={setCouponDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cupón de descuento</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Solo se puede aplicar 1 cupón por venta. Cada cupón es de un solo uso.
+          </p>
+          <div className="max-h-[60vh] space-y-4 overflow-y-auto">
+            {activeCoupons.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Cupones del cliente</p>
+                {activeCoupons.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
+                    <span className="flex-1">
+                      <span className="font-medium">{c.name}</span>
+                      <span className="block text-xs text-green-600">
+                        -{formatUSD(discountOf(c.kind, c.value, subtotal))}
+                      </span>
+                    </span>
+                    <Button size="sm" onClick={() => applyExistingCoupon(c)}>
+                      Aplicar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {affordableRewards.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Canjear con puntos</p>
+                {affordableRewards.map((r) => (
+                  <div key={r.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
+                    <span className="flex-1">
+                      <span className="font-medium">{r.name}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {r.cost_points} pts · -{formatUSD(discountOf(r.kind, r.value, subtotal))}
+                      </span>
+                    </span>
+                    <Button size="sm" variant="outline" onClick={() => redeemAndApply(r)}>
+                      Canjear y aplicar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {activeCoupons.length === 0 && affordableRewards.length === 0 && (
+              <p className="py-6 text-center text-muted-foreground">
+                El cliente no tiene cupones ni puntos suficientes.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCouponDialogOpen(false)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Success Dialog - Print or Continue */}
       <Dialog open={successDialogOpen} onOpenChange={(open) => { if (!open) handleCloseSuccess() }}>
         <DialogContent>
@@ -1503,6 +1774,40 @@ export default function PosPage(): JSX.Element {
               </div>
             )
           })()}
+          {loyalty.enabled && pendingTickets.points > 0 && (
+            <div className="flex items-center justify-center gap-3 rounded-lg bg-muted/40 p-2 text-sm">
+              <span className="inline-flex items-center gap-1 font-medium">
+                <Star className="h-4 w-4 text-amber-500" />
+                Ganó {pendingTickets.points} puntos
+              </span>
+              {loyalty.raffle_enabled && pendingTickets.count > 0 && (
+                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                  <Ticket className="h-4 w-4" />
+                  {pendingTickets.count} cupo(s)
+                </span>
+              )}
+            </div>
+          )}
+          {pendingTickets.count > 0 && (
+            <div className="rounded-lg border border-dashed p-3">
+              {pendingTickets.printed ? (
+                <p className="flex items-center justify-center gap-2 text-sm text-green-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                  {pendingTickets.count} ticket(s) de rifa impresos
+                </p>
+              ) : (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    Esta venta genera {pendingTickets.count} ticket(s) de rifa.
+                  </span>
+                  <Button size="sm" variant="secondary" onClick={handlePrintTickets}>
+                    <Ticket className="mr-2 h-4 w-4" />
+                    Imprimir tickets
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
           <DialogFooter className="flex gap-2 sm:gap-2">
             {mobile ? (
               <div className="flex w-full flex-col gap-2">

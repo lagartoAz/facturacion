@@ -42,6 +42,17 @@ export function registerLoyaltyHandlers(db: Database.Database): void {
   ipcMain.handle('loyalty:balance', (_event, customerId: number) => service.balance(customerId))
   ipcMain.handle('loyalty:allBalances', () => service.allBalances())
   ipcMain.handle('loyalty:summaryByCustomer', () => service.summaryByCustomer())
+  ipcMain.handle('loyalty:pointsByInvoice', () => service.pointsByInvoice())
+
+  // Physical raffle tickets
+  ipcMain.handle('loyalty:ticketsForInvoice', (_event, invoiceId: number) =>
+    service.ticketsForInvoice(invoiceId)
+  )
+  ipcMain.handle('loyalty:markTicketsPrinted', (_event, invoiceId: number) => {
+    service.markTicketsPrinted(invoiceId)
+    return true
+  })
+  ipcMain.handle('loyalty:ticketsPrintedIds', () => service.ticketsPrintedIds())
   ipcMain.handle('loyalty:history', (_event, customerId: number, limit?: number) =>
     service.history(customerId, limit)
   )
@@ -76,6 +87,53 @@ export function registerLoyaltyHandlers(db: Database.Database): void {
   })
   ipcMain.handle('loyalty:redeemReward', (_event, customerId: number, rewardId: number) =>
     service.redeemReward(customerId, rewardId)
+  )
+
+  // Discount coupons (POS)
+  ipcMain.handle('loyalty:activeCoupons', (_event, customerId: number) =>
+    service.activeCoupons(customerId)
+  )
+  ipcMain.handle('loyalty:allCoupons', (_event, customerId: number) =>
+    service.allCoupons(customerId)
+  )
+  ipcMain.handle('loyalty:affordableDiscountRewards', (_event, customerId: number) =>
+    service.affordableDiscountRewards(customerId)
+  )
+
+  // Points preview / per-invoice summary
+  ipcMain.handle(
+    'loyalty:previewSale',
+    (
+      _event,
+      ctx: {
+        customerId: number | null
+        invoiceId: number
+        totalUsd: number
+        paymentMethod: string
+        currency: string
+        items: { productId?: number | null; quantity: number }[]
+      }
+    ) => service.previewSale(ctx)
+  )
+  ipcMain.handle('loyalty:invoiceSummary', (_event, invoiceId: number) =>
+    service.invoiceLoyaltySummary(invoiceId)
+  )
+
+  // Points-based reports
+  ipcMain.handle('loyalty:dailyPoints', (_event, from: string, to: string, customerId?: number) =>
+    service.dailyPoints(from, to, customerId)
+  )
+  ipcMain.handle('loyalty:hourlyPoints', (_event, day: string, customerId?: number) =>
+    service.hourlyPoints(day, customerId)
+  )
+  ipcMain.handle('loyalty:pointsSummary', (_event, from: string, to: string, customerId?: number) =>
+    service.pointsSummary(from, to, customerId)
+  )
+  ipcMain.handle('loyalty:monthlyPoints', (_event, from: string, to: string, customerId?: number) =>
+    service.monthlyPoints(from, to, customerId)
+  )
+  ipcMain.handle('loyalty:topProductsByPoints', (_event, from: string, to: string, limit?: number) =>
+    service.topProductsByPoints(from, to, limit)
   )
 
   // Raffle

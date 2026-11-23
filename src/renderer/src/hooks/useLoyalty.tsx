@@ -18,6 +18,10 @@ export interface LoyaltyStatus {
   raffle_enabled: boolean
   raffle_points_per_entry: number
   raffle_min_points: number
+  exclude_red_debtors: boolean
+  raffle_animation: string
+  tickets_enabled: boolean
+  winner_template: string
 }
 
 interface LoyaltyContextValue {
@@ -40,7 +44,11 @@ const DEFAULT: LoyaltyStatus = {
   redeem_value_usd: 0.01,
   raffle_enabled: false,
   raffle_points_per_entry: 0,
-  raffle_min_points: 0
+  raffle_min_points: 0,
+  exclude_red_debtors: false,
+  raffle_animation: 'ruleta',
+  tickets_enabled: false,
+  winner_template: ''
 }
 
 const LoyaltyContext = createContext<LoyaltyContextValue>({

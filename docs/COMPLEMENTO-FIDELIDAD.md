@@ -19,14 +19,17 @@ que se activa con una clave (licencia offline). Esta es la "Opción A".
 Carpeta de datos (build instalado): `%USERPROFILE%\.facturacion-pos\`
 Archivo de licencia: `%USERPROFILE%\.facturacion-pos\loyalty.license`
 
-## Dos formas de activar
+## Activación (solo por el `.exe` activador)
 
-1. **Dentro de la app (recomendada para el cliente):**
-   Configuración → *Complemento: Fidelidad* → pegar la clave → **Activar**.
+La activación **no** se hace con códigos ni claves dentro de la app. El cliente
+recibe un **activador `.exe`** aparte que, al ejecutarse, deja el archivo de
+licencia en la carpeta de datos. Al reabrir la app, el complemento queda activo.
+Ver `installers/complemento-fidelidad.nsi`.
 
-2. **Instalador de complemento (`.exe` aparte):**
-   El `.exe` deja caer el archivo de licencia en la carpeta de datos. No
-   reinstala la app. Ver `installers/complemento-fidelidad.nsi`.
+- **Estado:** se ve al final de Configuración (*Complemento: Fidelidad*):
+  Activado / Desactivado.
+- **Desactivar:** desde esa misma tarjeta, con una ventana de confirmación en la
+  que hay que escribir `desactivar`. Los puntos y rifas guardados no se borran.
 
 ## Generar la clave de activación
 
@@ -87,6 +90,51 @@ activar el complemento una vez en el servidor.
 > cliente. Si canjea puntos en un premio, sus participaciones bajan en
 > consecuencia (los puntos son una sola moneda). El ganador lo elige el backend
 > de forma ponderada; la ruleta solo anima hacia ese resultado ya decidido.
+
+### Cupones de descuento en el POS
+- Canjear un premio de descuento (USD o %) genera un **cupón de un solo uso**
+  para el cliente (los premios "libres" siguen siendo canje directo, sin cupón).
+- En el POS, con un cliente seleccionado, aparece **"Aplicar cupón de descuento"**
+  si el cliente tiene cupones sin usar **o** puntos suficientes para canjear uno
+  en el momento.
+- Se puede aplicar **1 cupón por venta**; el descuento se resta del total y el
+  cupón queda marcado como usado (atado a esa factura). El recibo muestra el
+  subtotal y el descuento.
+
+### Mensaje al ganador (WhatsApp)
+- Plantilla editable en Fidelidad → Rifa, con variables `{nombre}`, `{rifa}`,
+  `{tienda}`, `{fecha}`.
+- Tras sortear (o desde "Rifas anteriores"), el botón **Mensaje para WhatsApp**
+  abre el texto ya armado para **copiar y pegar**.
+
+### Tickets físicos de rifa (opcional)
+- Se activa/desactiva en Fidelidad → Rifa ("Tickets físicos imprimibles").
+- Al finalizar una venta se imprime primero la factura y luego el diálogo de
+  éxito **ofrece imprimir los tickets** (uno por cupo) para meterlos en un pote
+  físico y sortear a mano.
+- En **Facturas** cada venta muestra si sus tickets ya se imprimieron o están
+  **pendientes**, con botón para imprimirlos luego (así no se satura el cierre
+  de la venta).
+
+### Vista previa en el POS
+Con un cliente seleccionado, el carrito muestra **cuántos puntos y cupos** ganará
+la venta (se calcula en el backend con las reglas reales). Al finalizar, el
+diálogo de éxito confirma los puntos/cupos otorgados.
+
+### Reportes en puntos
+En **Reportes** hay un botón **Dinero / Puntos**: cambia las tarjetas, la gráfica
+(por día u hora) y el top de productos para mostrar las mismas estadísticas pero
+en puntos otorgados.
+
+### Estadísticas por cliente
+En **Clientes**, el botón de estadísticas abre un panel con el gasto por día
+(gráfica de barras, con toggle **Dinero / Puntos**), totales del periodo, y el
+detalle de fidelidad: puntos, cupos de rifa y la lista de **cupones**
+(Disponible, o Usado con su fecha de uso).
+
+### Rifa en el Home
+Si hay una rifa activa, el Home muestra una tarjeta con la rifa, cuántos
+**participantes distintos** van y cuántas **participaciones** hay en total.
 
 ### Lista de clientes
 Con el complemento activo, la página de **Clientes** muestra una columna con los

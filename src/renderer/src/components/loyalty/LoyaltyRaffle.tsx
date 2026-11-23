@@ -2,9 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter
+} from '@/components/ui/dialog'
 import { useLoyalty } from '@/hooks/useLoyalty'
-import { Ticket, Trophy, Trash2, Play, PartyPopper } from 'lucide-react'
+import { Ticket, Trophy, Trash2, Play, PartyPopper, MessageCircle, Copy, Save } from 'lucide-react'
 import RaffleRoulette, { type Participant } from '@/components/RaffleRoulette'
+
+const PLACEHOLDER_HINT = '{nombre}, {rifa}, {tienda}, {fecha}'
 
 interface Raffle {
   id: number
@@ -19,7 +28,8 @@ interface Raffle {
 }
 
 export default function LoyaltyRaffle(): JSX.Element {
-  const { status } = useLoyalty()
+  const { status, refresh } = useLoyalty()
+  const [animation, setAnimation] = useState(status.raffle_animation)
   const [active, setActive] = useState<Raffle | null>(null)
   const [raffles, setRaffles] = useState<Raffle[]>([])
   const [participants, setParticipants] = useState<Participant[]>([])
@@ -31,6 +41,21 @@ export default function LoyaltyRaffle(): JSX.Element {
   const [spinning, setSpinning] = useState(false)
   const [winnerId, setWinnerId] = useState<number | null>(null)
   const [winnerName, setWinnerName] = useState<string | null>(null)
+
+  // Winner message (WhatsApp copy-paste) + editable template
+  const [template, setTemplate] = useState(status.winner_template)
+  const [storeName, setStoreName] = useState('')
+  const [msgOpen, setMsgOpen] = useState(false)
+  const [msgText, setMsgText] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => setTemplate(status.winner_template), [status.winner_template])
+  useEffect(() => {
+    void (async () => {
+      const s = (await window.api.getAllSettings()) as Record<string, string>
+      setStoreName((s.receipt_title || '').trim())
+    })()
+  }, [])
 
   const load = useCallback(async (): Promise<void> => {
     const [a, list] = await Promise.all([
@@ -49,6 +74,14 @@ export default function LoyaltyRaffle(): JSX.Element {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => setAnimation(status.raffle_animation), [status.raffle_animation])
+
+  async function chooseAnimation(style: string): Promise<void> {
+    setAnimation(style)
+    await window.api.setLoyaltyConfig({ raffle_animation: style })
+    await refresh()
+  }
 
   async function createRaffle(): Promise<void> {
     if (!name.trim()) {
@@ -86,6 +119,40 @@ export default function LoyaltyRaffle(): JSX.Element {
   async function onSpinFinish(): Promise<void> {
     setSpinning(false)
     await load()
+  }
+
+  function buildWinnerMessage(name: string, raffleName: string): string {
+    const base =
+      (template && template.trim()) ||
+      '¡Felicidades {nombre}! Ganaste la rifa "{rifa}" en {tienda}.'
+    const vars: Record<string, string> = {
+      '{nombre}': name,
+      '{rifa}': raffleName,
+      '{tienda}': storeName || 'nuestra tienda',
+      '{fecha}': new Date().toLocaleDateString()
+    }
+    return base.replace(/\{nombre\}|\{rifa\}|\{tienda\}|\{fecha\}/g, (m) => vars[m] ?? m)
+  }
+
+  function openWinnerMessage(name: string, raffleName: string): void {
+    setMsgText(buildWinnerMessage(name, raffleName))
+    setCopied(false)
+    setMsgOpen(true)
+  }
+
+  async function copyMessage(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(msgText)
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  async function saveTemplate(): Promise<void> {
+    await window.api.setLoyaltyConfig({ winner_template: template })
+    await refresh()
+    alert('Plantilla guardada')
   }
 
   async function removeRaffle(id: number): Promise<void> {
@@ -127,18 +194,48 @@ export default function LoyaltyRaffle(): JSX.Element {
               </span>
             </div>
 
+            {/* Animation style selector */}
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Animación:</span>
+              <Button
+                size="sm"
+                variant={animation === 'ruleta' ? 'default' : 'outline'}
+                onClick={() => void chooseAnimation('ruleta')}
+              >
+                Ruleta
+              </Button>
+              <Button
+                size="sm"
+                variant={animation === 'minimal' ? 'default' : 'outline'}
+                onClick={() => void chooseAnimation('minimal')}
+              >
+                Minimalista
+              </Button>
+            </div>
+
             {/* Roulette */}
             <RaffleRoulette
               participants={participants}
               winnerId={winnerId}
               spinning={spinning}
+              variant={animation === 'minimal' ? 'minimal' : 'ruleta'}
               onFinish={() => void onSpinFinish()}
             />
 
             {winnerName && !spinning && (
-              <div className="flex items-center justify-center gap-2 rounded-lg border border-primary bg-primary/10 p-3 text-center font-semibold text-primary">
-                <PartyPopper className="h-5 w-5" />
-                ¡Ganador: {winnerName}!
+              <div className="flex flex-col items-center gap-2 rounded-lg border border-primary bg-primary/10 p-3 text-center">
+                <span className="flex items-center gap-2 font-semibold text-primary">
+                  <PartyPopper className="h-5 w-5" />
+                  ¡Ganador: {winnerName}!
+                </span>
+                <Button
+                  size="sm"
+                  className="bg-green-600 text-white hover:bg-green-700"
+                  onClick={() => openWinnerMessage(winnerName, active.name)}
+                >
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  Mensaje para WhatsApp
+                </Button>
               </div>
             )}
 
@@ -243,6 +340,16 @@ export default function LoyaltyRaffle(): JSX.Element {
                     <Trophy className="h-4 w-4 text-amber-500" />
                     {r.winner_name ?? '—'}
                   </span>
+                  {r.winner_name && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Mensaje para WhatsApp"
+                      onClick={() => openWinnerMessage(r.winner_name as string, r.name)}
+                    >
+                      <MessageCircle className="h-4 w-4 text-green-600" />
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" onClick={() => removeRaffle(r.id)}>
                     <Trash2 className="h-4 w-4 text-red-500" />
                   </Button>
@@ -252,6 +359,54 @@ export default function LoyaltyRaffle(): JSX.Element {
           </CardContent>
         </Card>
       )}
+
+      {/* Winner message template */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <MessageCircle className="h-5 w-5" />
+            Plantilla del mensaje al ganador
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Se usa para generar el mensaje de WhatsApp. Variables: {PLACEHOLDER_HINT}
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <textarea
+            value={template}
+            onChange={(e) => setTemplate(e.target.value)}
+            rows={5}
+            className="w-full rounded-md border bg-background p-3 text-sm"
+          />
+          <Button onClick={saveTemplate}>
+            <Save className="mr-2 h-4 w-4" />
+            Guardar plantilla
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={msgOpen} onOpenChange={setMsgOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mensaje para el ganador</DialogTitle>
+          </DialogHeader>
+          <textarea
+            value={msgText}
+            onChange={(e) => setMsgText(e.target.value)}
+            rows={6}
+            className="w-full rounded-md border bg-background p-3 text-sm"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMsgOpen(false)}>
+              Cerrar
+            </Button>
+            <Button onClick={copyMessage}>
+              <Copy className="mr-2 h-4 w-4" />
+              {copied ? 'Copiado' : 'Copiar mensaje'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

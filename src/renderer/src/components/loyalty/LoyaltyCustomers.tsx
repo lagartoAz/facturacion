@@ -2,9 +2,15 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle
+} from '@/components/ui/dialog'
 import { formatUSD } from '@/lib/currency'
 import { useLoyalty } from '@/hooks/useLoyalty'
-import { Star, Ticket } from 'lucide-react'
+import { Star, Ticket, ChevronRight } from 'lucide-react'
 import { rewardSummary } from './LoyaltyRewards'
 
 interface CustomerPoints {
@@ -44,6 +50,7 @@ export default function LoyaltyCustomers(): JSX.Element {
   const [selected, setSelected] = useState<CustomerPoints | null>(null)
   const [history, setHistory] = useState<LoyaltyEntry[]>([])
   const [redeemPoints, setRedeemPoints] = useState('')
+  const [open, setOpen] = useState(false)
 
   useEffect(() => {
     void load()
@@ -61,14 +68,15 @@ export default function LoyaltyCustomers(): JSX.Element {
   async function openCustomer(c: CustomerPoints): Promise<void> {
     setSelected(c)
     setRedeemPoints('')
+    setOpen(true)
     setHistory((await window.api.getLoyaltyHistory(c.customer_id, 50)) as LoyaltyEntry[])
   }
 
   async function refreshSelected(customerId: number): Promise<void> {
-    await load()
     const fresh = (await window.api.getLoyaltyBalances()) as CustomerPoints[]
-    const match = fresh.find((x) => x.customer_id === customerId) ?? null
-    setSelected(match)
+    setBalances(fresh)
+    setRewards((await window.api.listLoyaltyRewards(true)) as Reward[])
+    setSelected(fresh.find((x) => x.customer_id === customerId) ?? null)
     setHistory((await window.api.getLoyaltyHistory(customerId, 50)) as LoyaltyEntry[])
   }
 
@@ -105,53 +113,51 @@ export default function LoyaltyCustomers(): JSX.Element {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 landscape:grid-cols-2">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Clientes con puntos</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {balances.length > 0 ? (
-            <div className="space-y-1">
-              {balances.map((c) => (
-                <button
-                  key={c.customer_id}
-                  onClick={() => void openCustomer(c)}
-                  className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors hover:bg-muted/60 ${
-                    selected?.customer_id === c.customer_id ? 'bg-muted' : ''
-                  }`}
-                >
-                  <span className="flex-1 truncate text-left">{c.name}</span>
-                  <span className="inline-flex items-center gap-1 font-semibold">
-                    <Star className="h-4 w-4 text-amber-500" />
-                    {c.points}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Clientes participando</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Toca un cliente para ver su saldo, canjear premios y ver su historial.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {balances.length > 0 ? (
+          <div className="divide-y rounded-lg border">
+            {balances.map((c) => (
+              <button
+                key={c.customer_id}
+                onClick={() => void openCustomer(c)}
+                className="flex w-full items-center gap-3 p-3 text-sm transition-colors hover:bg-muted/60"
+              >
+                <span className="flex-1 truncate text-left font-medium">{c.name}</span>
+                <span className="inline-flex items-center gap-1 font-semibold">
+                  <Star className="h-4 w-4 text-amber-500" />
+                  {c.points}
+                </span>
+                {status.raffle_enabled && (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <Ticket className="h-4 w-4" />
+                    {c.entries}
                   </span>
-                  {status.raffle_enabled && (
-                    <span className="inline-flex items-center gap-1 text-muted-foreground">
-                      <Ticket className="h-4 w-4" />
-                      {c.entries}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="py-8 text-center text-muted-foreground">
-              Aún no hay clientes con puntos acumulados
-            </p>
-          )}
-        </CardContent>
-      </Card>
+                )}
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="py-8 text-center text-muted-foreground">
+            Aún no hay clientes con puntos acumulados
+          </p>
+        )}
+      </CardContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">
-            {selected ? selected.name : 'Selecciona un cliente'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {selected ? (
-            <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{selected?.name ?? 'Cliente'}</DialogTitle>
+          </DialogHeader>
+          {selected && (
+            <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-lg border p-4">
                   <p className="text-xs text-muted-foreground">Puntos</p>
@@ -172,7 +178,7 @@ export default function LoyaltyCustomers(): JSX.Element {
               {status.rewards_enabled && rewards.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Canjear premio</p>
-                  <div className="space-y-1">
+                  <div className="max-h-40 space-y-1 overflow-y-auto">
                     {rewards.map((r) => {
                       const affordable = selected.points >= r.cost_points
                       return (
@@ -220,7 +226,7 @@ export default function LoyaltyCustomers(): JSX.Element {
               <div>
                 <p className="mb-2 text-sm font-medium">Movimientos recientes</p>
                 {history.length > 0 ? (
-                  <div className="max-h-64 space-y-1 overflow-y-auto">
+                  <div className="max-h-56 space-y-1 overflow-y-auto">
                     {history.map((h) => (
                       <div
                         key={h.id}
@@ -243,14 +249,10 @@ export default function LoyaltyCustomers(): JSX.Element {
                   <p className="py-4 text-center text-muted-foreground">Sin movimientos</p>
                 )}
               </div>
-            </>
-          ) : (
-            <p className="py-8 text-center text-muted-foreground">
-              Elige un cliente para ver su saldo, canjear premios y ver su historial
-            </p>
+            </div>
           )}
-        </CardContent>
-      </Card>
-    </div>
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }

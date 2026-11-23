@@ -82,8 +82,19 @@ export class PurchaseService {
             | undefined)
         : undefined
 
-      const items = data.items.filter((i) => i.quantity > 0)
-      const totalCost = items.reduce((s, i) => s + i.quantity * (i.unitCost ?? 0), 0)
+      // Resolve each line's cost: use the entered cost, or fall back to the
+      // product's already-defined cost so the invested capital is still counted.
+      const costOf = this.db.prepare('SELECT cost_usd FROM products WHERE id = ?')
+      const items = data.items
+        .filter((i) => i.quantity > 0)
+        .map((i) => {
+          const explicit = i.unitCost != null && i.unitCost > 0
+          const fallback = explicit
+            ? 0
+            : ((costOf.get(i.productId) as { cost_usd: number } | undefined)?.cost_usd ?? 0)
+          return { ...i, effectiveCost: explicit ? (i.unitCost as number) : fallback, explicit }
+        })
+      const totalCost = items.reduce((s, i) => s + i.quantity * i.effectiveCost, 0)
       const totalItems = items.reduce((s, i) => s + i.quantity, 0)
 
       const result = this.db
@@ -118,7 +129,7 @@ export class PurchaseService {
       )
 
       for (const item of items) {
-        const unitCost = item.unitCost ?? 0
+        const unitCost = item.effectiveCost
         insertItem.run(
           purchaseId,
           item.productId,
@@ -128,7 +139,8 @@ export class PurchaseService {
           item.quantity * unitCost
         )
         addStock.run(item.quantity, item.productId)
-        if (unitCost > 0) updateCost.run(unitCost, item.productId)
+        // Only overwrite the product's cost when the intake supplied a new one.
+        if (item.explicit && unitCost > 0) updateCost.run(unitCost, item.productId)
         if (item.unitPrice != null && item.unitPrice > 0) updatePrice.run(item.unitPrice, item.productId)
       }
 

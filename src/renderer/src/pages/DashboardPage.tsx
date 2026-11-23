@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency'
-import { format, subDays, startOfYear, endOfYear } from 'date-fns'
-import { CartesianGrid, Line, LineChart, XAxis } from 'recharts'
+import { format, subDays, startOfYear, endOfYear, subMonths, startOfMonth, endOfMonth } from 'date-fns'
+import { CartesianGrid, Line, LineChart, XAxis, BarChart, Bar } from 'recharts'
+import { useLoyalty } from '@/hooks/useLoyalty'
 import {
   ChartContainer,
   ChartTooltip,
@@ -21,7 +22,8 @@ import {
   TrendingUp,
   Users,
   ArrowRightLeft,
-  Trophy
+  Trophy,
+  Ticket
 } from 'lucide-react'
 
 interface DailySale {
@@ -69,9 +71,14 @@ export default function DashboardPage(): JSX.Element {
   })
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [weekSales, setWeekSales] = useState<DailySale[]>([])
+  const [monthSales, setMonthSales] = useState<{ month: string; total: number }[]>([])
   const [lowStockCount, setLowStockCount] = useState(0)
   const [criticalDebtors, setCriticalDebtors] = useState(0)
   const [rates, setRates] = useState<ExchangeRate[]>([])
+  const { status: loyalty } = useLoyalty()
+  const [raffle, setRaffle] = useState<{ name: string; participants: number; entries: number } | null>(
+    null
+  )
 
   // Figures tied to the chosen period reload whenever it changes.
   useEffect(() => {
@@ -82,6 +89,43 @@ export default function DashboardPage(): JSX.Element {
   useEffect(() => {
     void loadStatic()
   }, [])
+
+  // When the "Año" preset is active, load the last 12 months for the chart.
+  useEffect(() => {
+    const isYear =
+      periodFrom === format(startOfYear(new Date()), 'yyyy-MM-dd') &&
+      periodTo === format(endOfYear(new Date()), 'yyyy-MM-dd')
+    if (!isYear) {
+      setMonthSales([])
+      return
+    }
+    const from = format(startOfMonth(subMonths(new Date(), 11)), 'yyyy-MM-dd')
+    const to = format(endOfMonth(new Date()), 'yyyy-MM-dd')
+    void (window.api.getMonthlySales(from, to) as Promise<{ month: string; total: number }[]>).then(
+      setMonthSales
+    )
+  }, [periodFrom, periodTo])
+
+  // Active-raffle stats (distinct participants + total participations).
+  useEffect(() => {
+    if (!loyalty.enabled || !loyalty.raffle_enabled) {
+      setRaffle(null)
+      return
+    }
+    void (async () => {
+      const r = (await window.api.getActiveRaffle()) as { id: number; name: string } | null
+      if (!r) {
+        setRaffle(null)
+        return
+      }
+      const parts = (await window.api.getRaffleParticipants(r.id)) as { entries: number }[]
+      setRaffle({
+        name: r.name,
+        participants: parts.length,
+        entries: parts.reduce((s, p) => s + p.entries, 0)
+      })
+    })()
+  }, [loyalty.enabled, loyalty.raffle_enabled])
 
   async function loadPeriod(): Promise<void> {
     const [summary, top] = await Promise.all([
@@ -157,6 +201,20 @@ export default function DashboardPage(): JSX.Element {
     )
       return 'year'
     return ''
+  })()
+
+  // Year preset → show the last 12 months (zero-filled, Spanish labels).
+  const showMonthly = activePreset === 'year'
+  const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+  const monthlyChartData = ((): { label: string; total: number }[] => {
+    const byMonth = new Map(monthSales.map((m) => [m.month, m.total]))
+    const out: { label: string; total: number }[] = []
+    for (let i = 11; i >= 0; i--) {
+      const d = subMonths(new Date(), i)
+      const key = format(d, 'yyyy-MM')
+      out.push({ label: `${MESES[d.getMonth()]} ${key.slice(2, 4)}`, total: byMonth.get(key) ?? 0 })
+    }
+    return out
   })()
 
   return (
@@ -288,6 +346,23 @@ export default function DashboardPage(): JSX.Element {
             <p className="text-xs text-muted-foreground mt-1">clientes</p>
           </CardContent>
         </Card>
+        {raffle && (
+          <Card
+            className="cursor-pointer hover:bg-muted/30 transition-colors"
+            onClick={() => navigate('/loyalty')}
+          >
+            <CardHeader className="flex flex-row items-center justify-between py-3">
+              <CardTitle className="text-sm font-medium">Rifa: {raffle.name}</CardTitle>
+              <Ticket className="h-4 w-4 text-primary" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{raffle.participants}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                participantes · {raffle.entries} participaciones
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Top 5 products for the selected period */}
@@ -321,13 +396,24 @@ export default function DashboardPage(): JSX.Element {
         </CardContent>
       </Card>
 
-      {/* Week chart */}
+      {/* Sales chart: last 12 months when "Año" is selected, else last 7 days */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Ventas - Ultimos 7 Dias</CardTitle>
+          <CardTitle className="text-lg">
+            {showMonthly ? 'Ventas - Ultimos 12 Meses' : 'Ventas - Ultimos 7 Dias'}
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          {weekSales.length > 0 ? (
+          {showMonthly ? (
+            <ChartContainer config={chartConfig}>
+              <BarChart accessibilityLayer data={monthlyChartData} margin={{ left: 12, right: 12 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+                <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                <Bar dataKey="total" fill="var(--color-total)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ChartContainer>
+          ) : weekSales.length > 0 ? (
             <ChartContainer config={chartConfig}>
               <LineChart
                 accessibilityLayer

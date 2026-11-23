@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { formatUSD } from '@/lib/currency'
-import { format, subDays, startOfYear, endOfYear } from 'date-fns'
+import { format, subDays, startOfYear, endOfYear, subMonths, startOfMonth, endOfMonth } from 'date-fns'
 import {
   BarChart,
   Bar,
@@ -13,7 +13,8 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts'
-import { TrendingUp, FileText, DollarSign, List, Trophy } from 'lucide-react'
+import { TrendingUp, FileText, DollarSign, List, Trophy, Star } from 'lucide-react'
+import { useLoyalty } from '@/hooks/useLoyalty'
 
 interface DailySale {
   day: string
@@ -23,6 +24,12 @@ interface DailySale {
 
 interface HourlySale {
   hour: string
+  total: number
+  count: number
+}
+
+interface MonthlySale {
+  month: string
   total: number
   count: number
 }
@@ -40,13 +47,16 @@ interface Summary {
 }
 
 export default function ReportsPage(): JSX.Element {
+  const { status: loyalty } = useLoyalty()
   // Default to the full current year (1 Jan – 31 Dec).
   const [dateFrom, setDateFrom] = useState(format(startOfYear(new Date()), 'yyyy-MM-dd'))
   const [dateTo, setDateTo] = useState(format(endOfYear(new Date()), 'yyyy-MM-dd'))
   const [dailySales, setDailySales] = useState<DailySale[]>([])
   const [hourlySales, setHourlySales] = useState<HourlySale[]>([])
+  const [monthlySales, setMonthlySales] = useState<MonthlySale[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [showAllProducts, setShowAllProducts] = useState(false)
+  const [viewMode, setViewMode] = useState<'money' | 'points'>('money')
   const [summary, setSummary] = useState<Summary>({
     total_revenue: 0,
     total_invoices: 0,
@@ -55,23 +65,53 @@ export default function ReportsPage(): JSX.Element {
 
   useEffect(() => {
     loadData()
-  }, [dateFrom, dateTo, showAllProducts])
+  }, [dateFrom, dateTo, showAllProducts, viewMode])
 
-  // When a single day is selected (by date range or the "Hoy"/"Ayer" buttons)
-  // the chart switches to an hour-by-hour breakdown instead of calendar days.
+  const points = viewMode === 'points'
+  // Format a metric value per the current view (money vs loyalty points).
+  const fmtVal = (n: number): string => (points ? `${Math.round(n)} pts` : formatUSD(n))
+
+  // The chart adapts to the range: a single day → by hour, the "Año" filter →
+  // by month (last 12 months), anything else → by day.
   const isSingleDay = dateFrom === dateTo
+  const isYear =
+    dateFrom === format(startOfYear(new Date()), 'yyyy-MM-dd') &&
+    dateTo === format(endOfYear(new Date()), 'yyyy-MM-dd')
+  const chartMode: 'hour' | 'month' | 'day' = isSingleDay ? 'hour' : isYear ? 'month' : 'day'
 
   async function loadData(): Promise<void> {
-    const [sales, hourly, products, sum] = await Promise.all([
-      isSingleDay ? Promise.resolve([]) : window.api.getDailySales(dateFrom, dateTo),
-      isSingleDay ? window.api.getHourlySales(dateFrom) : Promise.resolve([]),
-      window.api.getTopProducts(dateFrom, dateTo, showAllProducts ? 99999 : 10),
-      window.api.getSalesSummary(dateFrom, dateTo)
+    const limit = showAllProducts ? 99999 : 10
+    // Rolling 12-month window ending this month, for the monthly chart.
+    const monthFrom = format(startOfMonth(subMonths(new Date(), 11)), 'yyyy-MM-dd')
+    const monthTo = format(endOfMonth(new Date()), 'yyyy-MM-dd')
+    const [sales, hourly, monthly, products, sum] = await Promise.all([
+      chartMode === 'day'
+        ? viewMode === 'points'
+          ? window.api.getLoyaltyDailyPoints(dateFrom, dateTo)
+          : window.api.getDailySales(dateFrom, dateTo)
+        : Promise.resolve([]),
+      chartMode === 'hour'
+        ? viewMode === 'points'
+          ? window.api.getLoyaltyHourlyPoints(dateFrom)
+          : window.api.getHourlySales(dateFrom)
+        : Promise.resolve([]),
+      chartMode === 'month'
+        ? viewMode === 'points'
+          ? window.api.getLoyaltyMonthlyPoints(monthFrom, monthTo)
+          : window.api.getMonthlySales(monthFrom, monthTo)
+        : Promise.resolve([]),
+      viewMode === 'points'
+        ? window.api.getLoyaltyTopProductsByPoints(dateFrom, dateTo, limit)
+        : window.api.getTopProducts(dateFrom, dateTo, limit),
+      viewMode === 'points'
+        ? window.api.getLoyaltyPointsSummary(dateFrom, dateTo)
+        : window.api.getSalesSummary(dateFrom, dateTo)
     ])
     setDailySales(sales as DailySale[])
     setHourlySales(hourly as HourlySale[])
-    setTopProducts(products)
-    setSummary(sum)
+    setMonthlySales(monthly as MonthlySale[])
+    setTopProducts(products as TopProduct[])
+    setSummary(sum as Summary)
   }
 
   // Fill the gaps between the first and last hour with sales so the bars sit on
@@ -88,6 +128,19 @@ export default function ReportsPage(): JSX.Element {
       filled.push(byHour.get(h) ?? { hour: label, total: 0, count: 0 })
     }
     return filled
+  })()
+
+  // 12 month slots ending this month, zero-filled, with Spanish labels.
+  const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+  const monthlyChartData = ((): { label: string; total: number }[] => {
+    const byMonth = new Map(monthlySales.map((m) => [m.month, m.total]))
+    const out: { label: string; total: number }[] = []
+    for (let i = 11; i >= 0; i--) {
+      const d = subMonths(new Date(), i)
+      const key = format(d, 'yyyy-MM')
+      out.push({ label: `${MESES[d.getMonth()]} ${key.slice(2, 4)}`, total: byMonth.get(key) ?? 0 })
+    }
+    return out
   })()
 
   // Which quick-filter preset matches the current range, so it can be highlighted.
@@ -108,7 +161,29 @@ export default function ReportsPage(): JSX.Element {
 
   return (
     <div className="p-4 landscape:p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Reportes</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold">Reportes</h1>
+        {loyalty.enabled && (
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant={viewMode === 'money' ? 'default' : 'outline'}
+              onClick={() => setViewMode('money')}
+            >
+              <DollarSign className="mr-1 h-4 w-4" />
+              Dinero
+            </Button>
+            <Button
+              size="sm"
+              variant={viewMode === 'points' ? 'default' : 'outline'}
+              onClick={() => setViewMode('points')}
+            >
+              <Star className="mr-1 h-4 w-4" />
+              Puntos
+            </Button>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-3 items-end">
         <div className="space-y-1">
@@ -182,11 +257,17 @@ export default function ReportsPage(): JSX.Element {
       <div className="grid grid-cols-1 landscape:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between py-3">
-            <CardTitle className="text-sm font-medium">Ingresos Totales</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">
+              {points ? 'Puntos Otorgados' : 'Ingresos Totales'}
+            </CardTitle>
+            {points ? (
+              <Star className="h-4 w-4 text-amber-500" />
+            ) : (
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            )}
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{formatUSD(summary.total_revenue)}</p>
+            <p className="text-2xl font-bold">{fmtVal(summary.total_revenue)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -200,11 +281,13 @@ export default function ReportsPage(): JSX.Element {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between py-3">
-            <CardTitle className="text-sm font-medium">Ticket Promedio</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {points ? 'Puntos por Factura' : 'Ticket Promedio'}
+            </CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{formatUSD(summary.average_ticket)}</p>
+            <p className="text-2xl font-bold">{fmtVal(summary.average_ticket)}</p>
           </CardContent>
         </Card>
       </div>
@@ -213,11 +296,30 @@ export default function ReportsPage(): JSX.Element {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
-            {isSingleDay ? 'Ventas por Hora' : 'Ventas Diarias'}
+            {(points ? 'Puntos' : 'Ventas') +
+              (chartMode === 'hour' ? ' por Hora' : chartMode === 'month' ? ' por Mes' : chartMode === 'day' ? ' Diarias' : '')}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isSingleDay ? (
+          {chartMode === 'month' ? (
+            monthlySales.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={monthlyChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="label" fontSize={12} />
+                  <YAxis fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
+                  <Tooltip
+                    formatter={(value: number) => [fmtVal(value), points ? 'Puntos' : 'Total']}
+                  />
+                  <Bar dataKey="total" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-center text-muted-foreground py-8">
+                No hay datos en los ultimos 12 meses
+              </p>
+            )
+          ) : chartMode === 'hour' ? (
             hourlySales.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={hourlyChartData}>
@@ -228,9 +330,9 @@ export default function ReportsPage(): JSX.Element {
                     fontSize={12}
                     interval={1}
                   />
-                  <YAxis fontSize={12} tickFormatter={(v) => `$${v}`} />
+                  <YAxis fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
                   <Tooltip
-                    formatter={(value: number) => [formatUSD(value), 'Total']}
+                    formatter={(value: number) => [fmtVal(value), points ? 'Puntos' : 'Total']}
                     labelFormatter={(label) => `${label}:00 - ${label}:59`}
                   />
                   <Bar dataKey="total" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
@@ -250,9 +352,9 @@ export default function ReportsPage(): JSX.Element {
                   tickFormatter={(v) => format(new Date(v + 'T00:00:00'), 'dd/MM')}
                   fontSize={12}
                 />
-                <YAxis fontSize={12} tickFormatter={(v) => `$${v}`} />
+                <YAxis fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
                 <Tooltip
-                  formatter={(value: number) => [formatUSD(value), 'Total']}
+                  formatter={(value: number) => [fmtVal(value), points ? 'Puntos' : 'Total']}
                   labelFormatter={(label) => format(new Date(label + 'T00:00:00'), 'dd/MM/yyyy')}
                 />
                 <Bar dataKey="total" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
@@ -308,7 +410,7 @@ export default function ReportsPage(): JSX.Element {
                       <th className="text-left p-3 font-medium">#</th>
                       <th className="text-left p-3 font-medium">Producto</th>
                       <th className="text-right p-3 font-medium">Cantidad</th>
-                      <th className="text-right p-3 font-medium">Ingreso</th>
+                      <th className="text-right p-3 font-medium">{points ? 'Puntos' : 'Ingreso'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -317,7 +419,7 @@ export default function ReportsPage(): JSX.Element {
                         <td className="p-3 text-muted-foreground">{i + 1}</td>
                         <td className="p-3">{p.name}</td>
                         <td className="p-3 text-right">{p.quantity}</td>
-                        <td className="p-3 text-right font-semibold">{formatUSD(p.revenue)}</td>
+                        <td className="p-3 text-right font-semibold">{fmtVal(p.revenue)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -335,8 +437,8 @@ export default function ReportsPage(): JSX.Element {
                       <span className="font-medium text-foreground">{p.quantity}</span>
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-muted-foreground">Ingreso</span>
-                      <span className="font-medium text-foreground">{formatUSD(p.revenue)}</span>
+                      <span className="text-muted-foreground">{points ? 'Puntos' : 'Ingreso'}</span>
+                      <span className="font-medium text-foreground">{fmtVal(p.revenue)}</span>
                     </div>
                   </div>
                 ))}

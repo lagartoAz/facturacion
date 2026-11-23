@@ -12,6 +12,12 @@ export interface HourlySale {
   count: number
 }
 
+export interface MonthlySale {
+  month: string
+  total: number
+  count: number
+}
+
 export interface TopProduct {
   name: string
   quantity: number
@@ -73,28 +79,46 @@ export class ReportService {
     return { ...totals, monthly_sales }
   }
 
-  dailySales(from: string, to: string): DailySale[] {
+  dailySales(from: string, to: string, customerId?: number): DailySale[] {
+    const cust = customerId ? ' AND customer_id = ?' : ''
+    const args = customerId ? [from, to, customerId] : [from, to]
     return this.db
       .prepare(
         `SELECT date(created_at) as day, SUM(total_usd) as total, COUNT(*) as count
          FROM invoices
-         WHERE status = 'completed' AND date(created_at) >= ? AND date(created_at) <= ?
+         WHERE status = 'completed' AND date(created_at) >= ? AND date(created_at) <= ?${cust}
          GROUP BY day
          ORDER BY day ASC`
       )
-      .all(from, to) as DailySale[]
+      .all(...args) as DailySale[]
   }
 
-  hourlySales(day: string): HourlySale[] {
+  hourlySales(day: string, customerId?: number): HourlySale[] {
+    const cust = customerId ? ' AND customer_id = ?' : ''
+    const args = customerId ? [day, customerId] : [day]
     return this.db
       .prepare(
         `SELECT strftime('%H', created_at) as hour, SUM(total_usd) as total, COUNT(*) as count
          FROM invoices
-         WHERE status = 'completed' AND date(created_at) = ?
+         WHERE status = 'completed' AND date(created_at) = ?${cust}
          GROUP BY hour
          ORDER BY hour ASC`
       )
-      .all(day) as HourlySale[]
+      .all(...args) as HourlySale[]
+  }
+
+  monthlySales(from: string, to: string, customerId?: number): MonthlySale[] {
+    const cust = customerId ? ' AND customer_id = ?' : ''
+    const args = customerId ? [from, to, customerId] : [from, to]
+    return this.db
+      .prepare(
+        `SELECT strftime('%Y-%m', created_at) as month, SUM(total_usd) as total, COUNT(*) as count
+         FROM invoices
+         WHERE status = 'completed' AND date(created_at) >= ? AND date(created_at) <= ?${cust}
+         GROUP BY month
+         ORDER BY month ASC`
+      )
+      .all(...args) as MonthlySale[]
   }
 
   topProducts(from: string, to: string, limit = 10): TopProduct[] {
@@ -111,16 +135,18 @@ export class ReportService {
       .all(from, to, limit) as TopProduct[]
   }
 
-  summary(from: string, to: string): SalesSummary {
+  summary(from: string, to: string, customerId?: number): SalesSummary {
+    const cust = customerId ? ' AND customer_id = ?' : ''
+    const args = customerId ? [from, to, customerId] : [from, to]
     const result = this.db
       .prepare(
         `SELECT COALESCE(SUM(total_usd), 0) as total_revenue,
                 COUNT(*) as total_invoices,
                 COALESCE(AVG(total_usd), 0) as average_ticket
          FROM invoices
-         WHERE status = 'completed' AND date(created_at) >= ? AND date(created_at) <= ?`
+         WHERE status = 'completed' AND date(created_at) >= ? AND date(created_at) <= ?${cust}`
       )
-      .get(from, to) as SalesSummary
+      .get(...args) as SalesSummary
     return result
   }
 }

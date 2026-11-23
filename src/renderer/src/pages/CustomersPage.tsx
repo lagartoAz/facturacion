@@ -12,9 +12,10 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency'
-import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft, Star, Ticket } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft, Star, Ticket, BarChart3 } from 'lucide-react'
 import { format } from 'date-fns'
 import { useLoyalty } from '@/hooks/useLoyalty'
+import CustomerStatsDialog from '@/components/CustomerStatsDialog'
 
 interface Customer {
   id: number
@@ -86,6 +87,7 @@ export default function CustomersPage(): JSX.Element {
   const [loyaltySummary, setLoyaltySummary] = useState<
     Record<number, { points: number; entries: number }>
   >({})
+  const [statsCustomer, setStatsCustomer] = useState<{ id: number; name: string } | null>(null)
   const [criticalThreshold, setCriticalThreshold] = useState(40)
   const [debtDialogOpen, setDebtDialogOpen] = useState(false)
   const [debtCustomer, setDebtCustomer] = useState<Customer | null>(null)
@@ -407,6 +409,9 @@ export default function CustomersPage(): JSX.Element {
                         })()}
                       </td>
                       <td className="p-3 text-center space-x-1">
+                        <Button variant="ghost" size="icon" onClick={() => setStatsCustomer({ id: c.id, name: c.name })} title="Estadisticas">
+                          <BarChart3 className="h-4 w-4" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => openDebt(c)} title="Ver deuda">
                           <Wallet className="h-4 w-4" />
                         </Button>
@@ -470,6 +475,9 @@ export default function CustomersPage(): JSX.Element {
                       </div>
                     )}
                     <div className="flex justify-end gap-1 pt-1 border-t">
+                      <Button variant="ghost" size="icon" onClick={() => setStatsCustomer({ id: c.id, name: c.name })} title="Estadisticas">
+                        <BarChart3 className="h-4 w-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" onClick={() => openDebt(c)} title="Ver deuda">
                         <Wallet className="h-4 w-4" />
                       </Button>
@@ -918,6 +926,14 @@ export default function CustomersPage(): JSX.Element {
           )}
         </DialogContent>
       </Dialog>
+
+      <CustomerStatsDialog
+        customer={statsCustomer}
+        open={statsCustomer !== null}
+        onOpenChange={(v) => {
+          if (!v) setStatsCustomer(null)
+        }}
+      />
     </div>
   )
 }

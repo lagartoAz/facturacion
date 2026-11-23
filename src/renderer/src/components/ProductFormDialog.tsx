@@ -16,7 +16,8 @@ import {
   capturePhoto,
   isMobileApp
 } from '@/lib/product-image'
-import { Plus, ImagePlus, Camera, X, Trash2 } from 'lucide-react'
+import { Plus, ImagePlus, Camera, X, Trash2, Star } from 'lucide-react'
+import { useLoyalty } from '@/hooks/useLoyalty'
 
 export interface ProductForForm {
   id: number
@@ -77,6 +78,8 @@ export default function ProductFormDialog({
   allowDelete = true
 }: Props): JSX.Element {
   const editingId = product?.id ?? null
+  const { status: loyalty } = useLoyalty()
+  const [loyaltyPoints, setLoyaltyPoints] = useState('0')
   const [form, setForm] = useState(emptyForm)
   const [categories, setCategories] = useState<Category[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -100,6 +103,17 @@ export default function ProductFormDialog({
     setImageFile(null)
     setRemoveImage(false)
     setImagePreview(null)
+    setLoyaltyPoints('0')
+
+    // Load this product's loyalty points (only relevant with the add-on active).
+    if (loyalty.enabled && product) {
+      window.api.getLoyaltyProductPoints().then((rows) => {
+        const match = (rows as { product_id: number; points: number }[]).find(
+          (r) => r.product_id === product.id
+        )
+        setLoyaltyPoints(String(match?.points ?? 0))
+      })
+    }
 
     if (product) {
       setForm({
@@ -194,6 +208,10 @@ export default function ProductFormDialog({
     } else if (removeImage && existingImagePath) {
       await window.api.removeProductImage(saved.id)
       invalidateProductImage(saved.id)
+    }
+
+    if (loyalty.enabled) {
+      await window.api.setLoyaltyProductPoints(saved.id, parseInt(loyaltyPoints) || 0)
     }
 
     onOpenChange(false)
@@ -324,6 +342,25 @@ export default function ProductFormDialog({
               />
             </div>
           </div>
+          {loyalty.enabled && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Star className="h-4 w-4 text-amber-500" />
+                Puntos de fidelidad por unidad
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                step="1"
+                value={loyaltyPoints}
+                onChange={(e) => setLoyaltyPoints(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Puntos que otorga este producto por unidad vendida (si la regla “por producto” está
+                activa). 0 = no da puntos.
+              </p>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <input
               type="checkbox"

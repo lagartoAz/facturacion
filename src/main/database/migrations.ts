@@ -471,4 +471,63 @@ export function runMigrations(db: Database.Database): void {
     def('loyalty_raffle_min_points', '0') // minimum points to take part
     db.pragma('user_version = 21')
   }
+
+  if (version < 22) {
+    const def = (k: string, v: string): void => {
+      db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(k, v)
+    }
+    // Block "red" (critical) debtors from the raffle even if they have points.
+    def('loyalty_exclude_red_debtors', '0')
+    // Raffle draw animation style: 'ruleta' (colored wheel) or 'minimal' (reel).
+    def('loyalty_raffle_animation', 'ruleta')
+    db.pragma('user_version = 22')
+  }
+
+  if (version < 23) {
+    // Physical raffle tickets: printed slips a shopper drops in a pot to draw by
+    // hand. Records which invoices already had their tickets printed.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS loyalty_ticket_prints (
+        invoice_id INTEGER PRIMARY KEY REFERENCES invoices(id) ON DELETE CASCADE,
+        printed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+    `)
+    const def = (k: string, v: string): void => {
+      db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(k, v)
+    }
+    def('loyalty_tickets_enabled', '0')
+    def(
+      'loyalty_winner_template',
+      '🎉 ¡Felicidades {nombre}! 🎉\n\nGanaste nuestra rifa "{rifa}" en {tienda}.\nPasa por la tienda para reclamar tu premio.\n\n¡Gracias por tu preferencia!'
+    )
+    db.pragma('user_version = 23')
+  }
+
+  if (version < 24) {
+    // Discount coupons: a reward redeemed for points becomes a single-use coupon
+    // the customer can later apply to one sale. The invoice records the applied
+    // discount and which coupon was used.
+    db.exec(`
+      ALTER TABLE invoices ADD COLUMN discount_usd REAL NOT NULL DEFAULT 0;
+      ALTER TABLE invoices ADD COLUMN coupon_id INTEGER;
+
+      CREATE TABLE IF NOT EXISTS loyalty_coupons (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        reward_id   INTEGER,
+        name        TEXT NOT NULL,
+        kind        TEXT NOT NULL CHECK (kind IN ('discount_usd', 'discount_pct', 'custom')),
+        value       REAL NOT NULL DEFAULT 0,
+        cost_points INTEGER NOT NULL DEFAULT 0,
+        status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'used')),
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+        used_at     TEXT,
+        invoice_id  INTEGER REFERENCES invoices(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_loyalty_coupons_customer
+        ON loyalty_coupons(customer_id, status);
+    `)
+    db.pragma('user_version = 24')
+  }
 }

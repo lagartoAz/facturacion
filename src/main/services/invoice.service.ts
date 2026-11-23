@@ -24,6 +24,8 @@ export interface CreateInvoiceDTO {
   paymentAmountVes?: number
   paymentAmountCop?: number
   notes?: string
+  /** Single-use loyalty discount coupon to apply to this sale. */
+  couponId?: number
 }
 
 export interface Invoice {
@@ -35,6 +37,8 @@ export interface Invoice {
   tax_percent: number
   tax_amount_usd: number
   total_usd: number
+  discount_usd?: number
+  coupon_id?: number | null
   rate_ves: number | null
   rate_cop: number | null
   total_ves: number | null
@@ -95,15 +99,20 @@ export class InvoiceService {
         (sum, item) => sum + item.quantity * item.unitPrice,
         0
       )
-      const total = subtotal
+      // Apply a single-use discount coupon if one was selected. The discount is
+      // recomputed here (authoritative) from the coupon, not trusted from the UI.
+      const discount = data.couponId
+        ? this.loyaltyService.validateCouponDiscount(data.couponId, data.customerId || null, subtotal)
+        : 0
+      const total = Math.max(0, subtotal - discount)
 
       // Insert invoice
       const result = this.db
         .prepare(
           `INSERT INTO invoices (invoice_number, customer_id, subtotal_usd, tax_percent,
-            tax_amount_usd, total_usd, rate_ves, rate_cop, total_ves, total_cop,
+            tax_amount_usd, total_usd, discount_usd, coupon_id, rate_ves, rate_cop, total_ves, total_cop,
             payment_method, cash_currency, payment_amount_ves, payment_amount_cop, notes, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`
         )
         .run(
           invoiceNumber,
@@ -112,6 +121,8 @@ export class InvoiceService {
           0,
           0,
           total,
+          discount,
+          data.couponId || null,
           rateVes,
           rateCop,
           total * rateVes,
@@ -123,6 +134,9 @@ export class InvoiceService {
           data.notes || null
         )
       const invoiceId = result.lastInsertRowid
+
+      // Burn the coupon now that it's attached to a real invoice.
+      if (data.couponId) this.loyaltyService.markCouponUsed(data.couponId, Number(invoiceId))
 
       // Insert line items and decrement stock
       const insertItem = this.db.prepare(

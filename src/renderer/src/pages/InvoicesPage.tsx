@@ -17,8 +17,10 @@ import {
   formatAmountIn,
   plainAmountIn
 } from '@/lib/currency'
-import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2, ChevronLeft, ChevronRight, MessageCircle, PackagePlus } from 'lucide-react'
+import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2, ChevronLeft, ChevronRight, MessageCircle, PackagePlus, Star, Ticket } from 'lucide-react'
 import { format } from 'date-fns'
+import { useLoyalty } from '@/hooks/useLoyalty'
+import { printRaffleTickets } from '@/lib/raffle-tickets'
 import type { ReceiptData } from '../../../shared/receipt'
 import { shareReceiptToWhatsApp } from '@/lib/whatsapp'
 import { isMobileApp } from '@/lib/product-image'
@@ -92,6 +94,9 @@ type Tab = 'invoices' | 'quotes' | 'intakes'
 const PAGE_SIZE = 20
 
 export default function InvoicesPage(): JSX.Element {
+  const { status: loyalty } = useLoyalty()
+  const [invoicePoints, setInvoicePoints] = useState<Record<number, number>>({})
+  const [ticketsPrinted, setTicketsPrinted] = useState<Set<number>>(new Set())
   const [tab, setTab] = useState<Tab>('invoices')
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [quotes, setQuotes] = useState<Quote[]>([])
@@ -123,7 +128,45 @@ export default function InvoicesPage(): JSX.Element {
     ])
     setInvoices(data)
     setInvoiceTotal(total)
-  }, [dateFrom, dateTo, invoicePage])
+    if (loyalty.enabled) {
+      setInvoicePoints(
+        (await window.api.getLoyaltyPointsByInvoice()) as Record<number, number>
+      )
+      if (loyalty.tickets_enabled) {
+        const ids = (await window.api.getTicketsPrintedIds()) as number[]
+        setTicketsPrinted(new Set(ids))
+      }
+    }
+  }, [dateFrom, dateTo, invoicePage, loyalty.enabled, loyalty.tickets_enabled])
+
+  // Physical raffle tickets this invoice generates (same rule as entries, but a
+  // threshold-only raffle still yields one ticket per qualifying purchase).
+  const ticketCount = (id: number): number => {
+    if (!loyalty.tickets_enabled || !loyalty.raffle_enabled) return 0
+    const points = invoicePoints[id] ?? 0
+    const ppe = loyalty.raffle_points_per_entry
+    return ppe > 0 ? Math.floor(points / ppe) : points > 0 ? 1 : 0
+  }
+
+  async function printTickets(invoiceId: number): Promise<void> {
+    const res = await printRaffleTickets(invoiceId)
+    if (res.ok) {
+      setTicketsPrinted((prev) => new Set(prev).add(invoiceId))
+      setNotification(`${res.count} ticket(s) de rifa impresos`)
+    } else if (res.error) {
+      setNotification(res.error)
+    }
+  }
+
+  // Points an invoice granted, and how many raffle entries those points buy.
+  const invoiceReward = (
+    id: number
+  ): { points: number; entries: number } => {
+    const points = invoicePoints[id] ?? 0
+    const ppe = loyalty.raffle_points_per_entry
+    const entries = loyalty.raffle_enabled && ppe > 0 ? Math.floor(points / ppe) : 0
+    return { points, entries }
+  }
 
   const loadQuotes = useCallback(async () => {
     setQuotes(
@@ -507,6 +550,14 @@ export default function InvoicesPage(): JSX.Element {
                   <th className="text-left p-3 font-medium">Cliente</th>
                   <th className="text-right p-3 font-medium">Total USD</th>
                   <th className="text-center p-3 font-medium">Pago</th>
+                  {loyalty.enabled && (
+                    <th className="text-center p-3 font-medium">
+                      {loyalty.raffle_enabled ? 'Puntos / Cupos' : 'Puntos'}
+                    </th>
+                  )}
+                  {loyalty.enabled && loyalty.tickets_enabled && loyalty.raffle_enabled && (
+                    <th className="text-center p-3 font-medium">Tickets</th>
+                  )}
                   <th className="text-center p-3 font-medium">Estado</th>
                   <th className="text-center p-3 font-medium">Acciones</th>
                 </tr>
@@ -519,6 +570,49 @@ export default function InvoicesPage(): JSX.Element {
                     <td className="p-3">{inv.customer_name || 'Consumidor Final'}</td>
                     <td className="p-3 text-right font-semibold">{formatUSD(inv.total_usd)}</td>
                     <td className="p-3 text-center">{paymentLabels[inv.payment_method] || inv.payment_method}</td>
+                    {loyalty.enabled && (
+                      <td className="p-3 text-center">
+                        {(() => {
+                          const r = invoiceReward(inv.id)
+                          return (
+                            <span className="inline-flex items-center gap-2">
+                              <span className="inline-flex items-center gap-1">
+                                <Star className="h-3.5 w-3.5 text-amber-500" />
+                                {r.points}
+                              </span>
+                              {loyalty.raffle_enabled && (
+                                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                                  <Ticket className="h-3.5 w-3.5" />
+                                  {r.entries}
+                                </span>
+                              )}
+                            </span>
+                          )
+                        })()}
+                      </td>
+                    )}
+                    {loyalty.enabled && loyalty.tickets_enabled && loyalty.raffle_enabled && (
+                      <td className="p-3 text-center">
+                        {ticketCount(inv.id) === 0 ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : ticketsPrinted.has(inv.id) ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-green-600">
+                            <Ticket className="h-3.5 w-3.5" />
+                            Impresos
+                          </span>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-1"
+                            onClick={() => printTickets(inv.id)}
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            Imprimir ({ticketCount(inv.id)})
+                          </Button>
+                        )}
+                      </td>
+                    )}
                     <td className="p-3 text-center">
                       <Badge variant={inv.status === 'completed' ? 'default' : 'destructive'}>
                         {inv.status === 'completed' ? 'Completada' : 'Anulada'}
@@ -533,7 +627,14 @@ export default function InvoicesPage(): JSX.Element {
                 ))}
                 {invoices.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                    <td
+                      colSpan={
+                        7 +
+                        (loyalty.enabled ? 1 : 0) +
+                        (loyalty.enabled && loyalty.tickets_enabled && loyalty.raffle_enabled ? 1 : 0)
+                      }
+                      className="p-8 text-center text-muted-foreground"
+                    >
                       No hay facturas en el periodo seleccionado.
                     </td>
                   </tr>
@@ -560,6 +661,41 @@ export default function InvoicesPage(): JSX.Element {
                   <span className="text-muted-foreground">Pago</span>
                   <span className="font-medium text-foreground">{paymentLabels[inv.payment_method] || inv.payment_method}</span>
                 </div>
+                {loyalty.enabled && (
+                  <div className="flex justify-between text-xs items-center">
+                    <span className="text-muted-foreground">
+                      {loyalty.raffle_enabled ? 'Puntos / Cupos' : 'Puntos'}
+                    </span>
+                    <span className="inline-flex items-center gap-2 font-medium text-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <Star className="h-3.5 w-3.5 text-amber-500" />
+                        {invoiceReward(inv.id).points}
+                      </span>
+                      {loyalty.raffle_enabled && (
+                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                          <Ticket className="h-3.5 w-3.5" />
+                          {invoiceReward(inv.id).entries}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                {loyalty.enabled && loyalty.tickets_enabled && loyalty.raffle_enabled && ticketCount(inv.id) > 0 && (
+                  <div className="flex justify-between text-xs items-center">
+                    <span className="text-muted-foreground">Tickets rifa</span>
+                    {ticketsPrinted.has(inv.id) ? (
+                      <span className="inline-flex items-center gap-1 text-green-600">
+                        <Ticket className="h-3.5 w-3.5" />
+                        Impresos
+                      </span>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => printTickets(inv.id)}>
+                        <Printer className="h-3.5 w-3.5" />
+                        Imprimir ({ticketCount(inv.id)})
+                      </Button>
+                    )}
+                  </div>
+                )}
                 <div className="flex justify-between text-xs items-center">
                   <span className="text-muted-foreground">Estado</span>
                   <Badge variant={inv.status === 'completed' ? 'default' : 'destructive'}>
@@ -733,7 +869,7 @@ export default function InvoicesPage(): JSX.Element {
                   <th className="text-left p-3 font-medium">Referencia</th>
                   <th className="text-left p-3 font-medium">Proveedor</th>
                   <th className="text-right p-3 font-medium">Productos</th>
-                  <th className="text-right p-3 font-medium">Costo USD</th>
+                  <th className="text-right p-3 font-medium">Capital USD</th>
                   <th className="text-center p-3 font-medium">Acciones</th>
                 </tr>
               </thead>
@@ -774,7 +910,7 @@ export default function InvoicesPage(): JSX.Element {
                   <span className="font-medium text-foreground">{p.reference || '—'}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Costo</span>
+                  <span className="text-muted-foreground">Capital</span>
                   <span className="font-medium text-foreground">{p.total_cost > 0 ? formatUSD(p.total_cost) : '—'}</span>
                 </div>
                 <div className="flex justify-end gap-1 pt-1 border-t">

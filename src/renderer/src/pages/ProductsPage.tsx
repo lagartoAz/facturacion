@@ -11,7 +11,8 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { formatUSD } from '@/lib/currency'
 import { ProductThumb } from '@/components/ProductThumb'
-import { Plus, Search, Pencil, ToggleLeft, ToggleRight, BarChart3, ChevronLeft, ChevronRight, PackagePlus } from 'lucide-react'
+import { Plus, Search, Pencil, ToggleLeft, ToggleRight, BarChart3, ChevronLeft, ChevronRight, PackagePlus, Star } from 'lucide-react'
+import { useLoyalty } from '@/hooks/useLoyalty'
 import ProductIntakeDialog from '@/components/ProductIntakeDialog'
 import ProductFormDialog, { type ProductForForm } from '@/components/ProductFormDialog'
 import {
@@ -53,6 +54,8 @@ interface ProductStats {
 const PRODUCT_PAGE_SIZE = 20
 
 export default function ProductsPage(): JSX.Element {
+  const { status: loyalty } = useLoyalty()
+  const [productPoints, setProductPoints] = useState<Record<number, number>>({})
   const [products, setProducts] = useState<Product[]>([])
   const [productTotal, setProductTotal] = useState(0)
   const [productPage, setProductPage] = useState(1)
@@ -81,7 +84,14 @@ export default function ProductsPage(): JSX.Element {
     setProducts(data)
     setProductTotal(total)
     setInventoryTotals(totals)
-  }, [search, stockFilter, productPage])
+    if (loyalty.enabled) {
+      const rows = (await window.api.getLoyaltyProductPoints()) as {
+        product_id: number
+        points: number
+      }[]
+      setProductPoints(Object.fromEntries(rows.map((r) => [r.product_id, r.points])))
+    }
+  }, [search, stockFilter, productPage, loyalty.enabled])
 
   useEffect(() => {
     setProductPage(1)
@@ -174,6 +184,7 @@ export default function ProductsPage(): JSX.Element {
               <th className="text-left p-3 font-medium">Proveedor</th>
               <th className="text-right p-3 font-medium">Precio USD</th>
               <th className="text-right p-3 font-medium">Stock</th>
+              {loyalty.enabled && <th className="text-right p-3 font-medium">Puntos</th>}
               <th className="text-center p-3 font-medium">Estado</th>
               <th className="text-center p-3 font-medium">Acciones</th>
             </tr>
@@ -194,6 +205,14 @@ export default function ProductsPage(): JSX.Element {
                     {p.stock}
                   </span>
                 </td>
+                {loyalty.enabled && (
+                  <td className="p-3 text-right">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      <Star className="h-3.5 w-3.5 text-amber-500" />
+                      {productPoints[p.id] ?? 0}
+                    </span>
+                  </td>
+                )}
                 <td className="p-3 text-center">
                   <Badge variant={p.is_active ? 'default' : 'secondary'}>
                     {p.is_active ? 'Activo' : 'Inactivo'}
@@ -218,7 +237,7 @@ export default function ProductsPage(): JSX.Element {
             ))}
             {products.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-muted-foreground">
+                <td colSpan={loyalty.enabled ? 10 : 9} className="p-8 text-center text-muted-foreground">
                   No hay productos. Haz clic en "Nuevo Producto" para agregar uno.
                 </td>
               </tr>
@@ -261,6 +280,15 @@ export default function ProductsPage(): JSX.Element {
                 {p.stock}
               </span>
             </div>
+            {loyalty.enabled && (
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Puntos</span>
+                <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                  <Star className="h-3.5 w-3.5 text-amber-500" />
+                  {productPoints[p.id] ?? 0}
+                </span>
+              </div>
+            )}
             <div className="flex justify-end gap-1 pt-1 border-t">
               <Button variant="ghost" size="icon" onClick={() => openStats(p)} title="Estadisticas">
                 <BarChart3 className="h-4 w-4" />
