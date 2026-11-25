@@ -1,6 +1,6 @@
 {
   "name": "facturacion",
-  "version": "1.21.1",
+  "version": "1.22.0",
   "description": "App de facturacion POS de escritorio offline",
   "type": "module",
   "main": "./out/main/index.js",
@@ -15,7 +15,8 @@
     "dist:client": "cross-env APP_ROLE=client electron-vite build && electron-builder --config electron-builder.client.yml",
     "android:sync": "electron-vite build && cap sync android",
     "android:open": "cap open android",
-    "android:apk": "electron-vite build && cap sync android && cd android && ./gradlew assembleDebug"
+    "android:apk": "electron-vite build && cap sync android && cd android && ./gradlew assembleDebug",
+    "android:inventory": "cross-env-shell APP_FLAVOR=inventory APP_ID=com.facturacion.inventario APP_NAME=Inventario \"electron-vite build && cap sync android && cd android && ./gradlew assembleDebug\""
   },
   "dependencies": {
     "@capacitor-mlkit/barcode-scanning": "^6.2.0",

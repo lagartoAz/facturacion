@@ -12,11 +12,16 @@ def (verMajor, verMinor, verPatch) = appVersionName.tokenize('.-').take(3).colle
 }
 def appVersionCode = verMajor * 10000 + verMinor * 100 + verPatch
 
+// applicationId is env-driven (APP_ID) so this one Android project can build two
+// coexisting APKs: the default "Acceso" client and the "Inventario" app. The
+// namespace (R class / MainActivity package) stays constant on purpose.
+def flavorAppId = System.getenv("APP_ID") ?: "com.facturacion.acceso"
+
 android {
     namespace "com.facturacion.acceso"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.facturacion.acceso"
+        applicationId flavorAppId
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode appVersionCode

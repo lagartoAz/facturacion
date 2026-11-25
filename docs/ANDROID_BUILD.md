@@ -36,6 +36,33 @@ Para un APK de **release firmado** (instalable en producción):
 3. Al abrir, aparece la pantalla **"Terminal de Acceso"**: escribir la IP del servidor + la clave.
    Queda guardada y reconecta sola al reabrir.
 
+## Segundo APK: app de Inventario (`com.facturacion.inventario`)
+
+Desde el **mismo repo** se puede generar un segundo APK independiente, enfocado solo en
+inventario, que convive con el de "Acceso" (tienen `applicationId` distinto).
+
+```bash
+# Genera android/app/build/outputs/apk/debug/app-debug.apk con appId com.facturacion.inventario
+npm run android:inventory
+```
+
+El flag de build `APP_FLAVOR=inventory` (ver `electron.vite.config.ts`) hace que el renderer
+arranque directo en la UI de inventario (`src/renderer/src/inventory/`) y fuerce rol cliente;
+`APP_ID`/`APP_NAME` cambian el `applicationId` (`android/app/build.gradle`) y el nombre
+(`capacitor.config.ts` → `strings.xml`). El `namespace` (clase R) se mantiene constante.
+
+> Nota: como `android:apk` y `android:inventory` comparten el mismo proyecto `android/`,
+> se compilan **uno a la vez** (cada corrida reescribe assets/applicationId).
+
+**Qué hace la app de Inventario:**
+- Se conecta por LAN a la terminal principal (misma pantalla "Terminal de Acceso").
+- Ve el inventario: existencias y **precio de venta en USD/VES/COP** (cambio del día).
+- Busca por **código de barras** (cámara) o por nombre.
+- **Agrega** inventario: crear productos nuevos y sumar stock (vía ingreso/compra) —
+  **solo cuando está conectada**.
+- Guarda una **copia local (IndexedDB)** del inventario y precios para **seguir viendo**
+  sin red (solo lectura); al reconectar sincroniza. Ver `src/renderer/src/inventory/offline-store.ts`.
+
 ## Notas técnicas
 - El servidor ya envía cabeceras **CORS** (`src/main/server/rpc-server.ts`) para permitir la WebView.
 - El manifest permite **tráfico HTTP en claro** (`usesCleartextTraffic="true"`) porque el servidor LAN

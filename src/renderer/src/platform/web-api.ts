@@ -15,6 +15,7 @@ import { createApi, type ThermalConfig } from '../../../shared/create-api'
 import { encodeReceipt } from '../../../shared/escpos'
 import type { ReceiptData } from '../../../shared/receipt'
 import { PROXIED_CHANNELS, SERVER_ONLY_CHANNELS } from '../../../main/shared/channels'
+import { isInventoryApp } from '../lib/flavor'
 
 const DEFAULT_PORT = 47600
 const STORE_KEY = 'facturacion.connection'
@@ -69,10 +70,12 @@ function toBase64(bytes: Uint8Array): string {
 function loadMode(): Mode {
   try {
     const m = localStorage.getItem(MODE_KEY)
-    return m === 'server' || m === 'client' ? m : ''
+    if (m === 'server' || m === 'client') return m
   } catch {
-    return ''
+    // ignore
   }
+  // The inventory APK is always a LAN client; it never shows the role picker.
+  return isInventoryApp() ? 'client' : ''
 }
 
 function saveMode(m: Mode): void {

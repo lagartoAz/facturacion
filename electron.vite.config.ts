@@ -7,6 +7,10 @@ import react from '@vitejs/plugin-react'
 // (owns the database + serves the LAN) and `client` for the "Acceso" build.
 const APP_ROLE = process.env.APP_ROLE === 'client' ? 'client' : 'server'
 
+// APP_FLAVOR selects which Android app the renderer build targets: 'pos' (the
+// full "Acceso" client, default) or 'inventory' (the standalone inventory APK).
+const APP_FLAVOR = process.env.APP_FLAVOR === 'inventory' ? 'inventory' : 'pos'
+
 // Single source of truth for the version shown in the UI (Settings footer) on
 // both PC (Electron) and Android (Capacitor uses this same renderer build).
 // package.json's version is what the GitHub release/tag is cut from, so injecting
@@ -31,7 +35,8 @@ export default defineConfig({
       }
     },
     define: {
-      __APP_VERSION__: JSON.stringify(APP_VERSION)
+      __APP_VERSION__: JSON.stringify(APP_VERSION),
+      __APP_FLAVOR__: JSON.stringify(APP_FLAVOR)
     },
     plugins: [react()]
   }
