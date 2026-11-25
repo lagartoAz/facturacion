@@ -645,4 +645,17 @@ export function runMigrations(db: Database.Database): void {
 
     db.pragma('user_version = 25')
   }
+
+  if (version < 26) {
+    // Estado de impresión de los tickets que NO provienen de una factura: los
+    // generados por canje de puntos (reward "ticket") o agregados a mano. Se
+    // rastrea por fila del ledger para poder marcarlos impresos / reimprimir.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS loyalty_manual_ticket_prints (
+        ledger_id  INTEGER PRIMARY KEY REFERENCES loyalty_tickets_ledger(id) ON DELETE CASCADE,
+        printed_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+    `)
+    db.pragma('user_version = 26')
+  }
 }

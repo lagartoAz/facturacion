@@ -136,6 +136,13 @@ export function createApi(invoke: Invoke) {
     markTicketsPrinted: (invoiceId: number) => invoke('loyalty:markTicketsPrinted', invoiceId),
     getTicketsPrintedIds: () => invoke('loyalty:ticketsPrintedIds'),
     getEarnedTicketsReport: () => invoke('loyalty:earnedTicketsReport'),
+    adjustLoyaltyTickets: (customerId: number, tickets: number, note?: string) =>
+      invoke('loyalty:adjustTickets', customerId, tickets, note),
+    getManualTicketsReport: () => invoke('loyalty:manualTicketsReport'),
+    getManualTicketPrintData: (ledgerId: number) =>
+      invoke('loyalty:manualTicketPrintData', ledgerId),
+    markManualTicketsPrinted: (ledgerId: number) =>
+      invoke('loyalty:markManualTicketsPrinted', ledgerId),
     getRedemptionsReport: (limit?: number) => invoke('loyalty:redemptionsReport', limit),
     getLoyaltyHistory: (customerId: number, limit?: number) =>
       invoke('loyalty:history', customerId, limit),

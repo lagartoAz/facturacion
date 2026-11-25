@@ -51,6 +51,8 @@ import {
   ArrowLeft,
   Camera,
   User,
+  UserPlus,
+  Package,
   MessageCircle,
   AlertTriangle,
   Ticket,
@@ -216,6 +218,20 @@ export default function PosPage(): JSX.Element {
   const [searchResults, setSearchResults] = useState<Product[]>([])
   const [customers, setCustomers] = useState<{ id: number; name: string; id_rif: string | null }[]>([])
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
+  // Barra de cliente en tres partes: búsqueda por nombre (incremental), por
+  // cédula (autocompleta el nombre al coincidir) y botón para crear cliente.
+  const [custNameQuery, setCustNameQuery] = useState('')
+  const [custCedulaQuery, setCustCedulaQuery] = useState('')
+  const [custDropdownOpen, setCustDropdownOpen] = useState(false)
+  const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
+  const [ncName, setNcName] = useState('')
+  const [ncCedula, setNcCedula] = useState('')
+  // Diálogo para registrar un producto nuevo y agregarlo al carrito al momento.
+  const [newProductDialogOpen, setNewProductDialogOpen] = useState(false)
+  const [npName, setNpName] = useState('')
+  const [npPrice, setNpPrice] = useState('')
+  const [npStock, setNpStock] = useState('')
+  const [npBarcode, setNpBarcode] = useState('')
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [cashCurrency, setCashCurrency] = useState('USD')
@@ -261,8 +277,7 @@ export default function PosPage(): JSX.Element {
   // and customer selection open dedicated full-screen views; quantities/weights
   // are entered with the in-app numeric keypad.
   const mobile = isMobileApp()
-  const [mobileScreen, setMobileScreen] = useState<null | 'search' | 'customer'>(null)
-  const [customerQuery, setCustomerQuery] = useState('')
+  const [mobileScreen, setMobileScreen] = useState<null | 'search'>(null)
   const [keypadTarget, setKeypadTarget] = useState<
     | { type: 'qty'; productId: number; current: number }
     | { type: 'weight'; product: Product }
@@ -373,17 +388,11 @@ export default function PosPage(): JSX.Element {
     setCart((prev) => {
       const existing = prev.find((item) => item.productId === product.id)
       if (existing && !isByWeight) {
-        if (existing.quantity >= product.stock) {
-          showNotification(`Stock insuficiente para ${product.name}`)
-          return prev
-        }
+        // Se permite superar el stock: el producto se vende igual y al carrito
+        // se le muestra un ícono de alerta. El stock se ajusta al cobrar.
         return prev.map((item) =>
           item.productId === product.id ? { ...item, quantity: item.quantity + quantity } : item
         )
-      }
-      if (product.stock <= 0) {
-        showNotification(`Sin stock: ${product.name}`)
-        return prev
       }
       return [
         ...prev,
@@ -417,6 +426,83 @@ export default function PosPage(): JSX.Element {
     setCustomDialogOpen(false)
     setCustomAmount('')
     setCustomNote('')
+    barcodeInputRef.current?.focus()
+  }
+
+  // ---- Cliente: selección / búsqueda / creación ----
+  type CustomerLite = { id: number; name: string; id_rif: string | null }
+
+  function selectCustomer(c: CustomerLite): void {
+    setSelectedCustomerId(c.id)
+    setCustNameQuery(c.name)
+    setCustCedulaQuery(c.id_rif ?? '')
+    setCustDropdownOpen(false)
+  }
+
+  function clearCustomer(): void {
+    setSelectedCustomerId(null)
+    setCustNameQuery('')
+    setCustCedulaQuery('')
+    setCustDropdownOpen(false)
+  }
+
+  function handleCedulaChange(value: string): void {
+    setCustCedulaQuery(value)
+    setSelectedCustomerId(null)
+    const q = value.trim().toLowerCase()
+    if (!q) return
+    // Si la cédula coincide exactamente con un cliente, autocompleta el nombre.
+    const match = customers.find((c) => (c.id_rif ?? '').toLowerCase() === q)
+    if (match) {
+      setSelectedCustomerId(match.id)
+      setCustNameQuery(match.name)
+    }
+  }
+
+  function openCreateCustomer(): void {
+    setNcName(custNameQuery.trim())
+    setNcCedula(custCedulaQuery.trim())
+    setCustDropdownOpen(false)
+    setNewCustomerDialogOpen(true)
+  }
+
+  async function handleCreateCustomer(): Promise<void> {
+    const name = ncName.trim()
+    if (!name) {
+      showNotification('El nombre del cliente es obligatorio')
+      return
+    }
+    const created = (await window.api.createCustomer({
+      name,
+      id_rif: ncCedula.trim() || undefined
+    })) as CustomerLite
+    setCustomers(await window.api.getCustomers())
+    selectCustomer(created)
+    setNewCustomerDialogOpen(false)
+    setNcName('')
+    setNcCedula('')
+  }
+
+  async function handleCreateProduct(): Promise<void> {
+    const name = npName.trim()
+    const price = parseFloat(npPrice)
+    if (!name || !Number.isFinite(price) || price <= 0) {
+      showNotification('Nombre y precio válidos son obligatorios')
+      return
+    }
+    const stock = parseInt(npStock, 10)
+    const created = (await window.api.createProduct({
+      name,
+      price_usd: price,
+      stock: Number.isFinite(stock) ? stock : 0,
+      barcode: npBarcode.trim() || undefined
+    })) as Product
+    addToCartDirect(created, 1, false)
+    setNewProductDialogOpen(false)
+    setNpName('')
+    setNpPrice('')
+    setNpStock('')
+    setNpBarcode('')
     barcodeInputRef.current?.focus()
   }
 
@@ -474,10 +560,7 @@ export default function PosPage(): JSX.Element {
           if (item.productId !== productId) return item
           const newQty = item.quantity + delta
           if (newQty <= 0) return null
-          if (newQty > item.stock) {
-            showNotification('Stock insuficiente')
-            return item
-          }
+          // Se permite superar el stock (venta sin stock); el carrito marca la alerta.
           return { ...item, quantity: newQty }
         })
         .filter(Boolean) as CartItem[]
@@ -494,10 +577,7 @@ export default function PosPage(): JSX.Element {
     setCart((prev) =>
       prev.map((item) => {
         if (item.productId !== productId) return item
-        if (qty > item.stock) {
-          showNotification('Stock insuficiente')
-          return { ...item, quantity: item.stock }
-        }
+        // Se permite superar el stock (venta sin stock); el carrito marca la alerta.
         return { ...item, quantity: qty }
       })
     )
@@ -694,6 +774,8 @@ export default function PosPage(): JSX.Element {
 
       setCart([])
       setSelectedCustomerId(null)
+      setCustNameQuery('')
+      setCustCedulaQuery('')
       setSelectedCoupon(null)
       setPaymentDialogOpen(false)
       setPaymentMethod('cash')
@@ -1004,35 +1086,75 @@ export default function PosPage(): JSX.Element {
     <div className={`flex flex-col landscape:flex-row ${isStandaloneWindow ? 'h-screen' : 'h-full'}`}>
       {/* Left panel - Cart */}
       <div className="flex-1 min-h-0 flex flex-col p-4 landscape:border-r order-last landscape:order-none">
-        {/* Customer selector */}
-        <div className="mb-4">
-          {mobile ? (
-            <Button
-              variant="outline"
-              className="w-full justify-start h-11 font-normal"
-              onClick={() => {
-                setCustomerQuery('')
-                setMobileScreen('customer')
+        {/* Customer selector: nombre (incremental) · cédula (autocompleta) · agregar */}
+        <div className="mb-4 flex items-start gap-2">
+          <div className="relative flex-1 min-w-0">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              className="pl-9"
+              placeholder="Cliente (nombre)..."
+              value={custNameQuery}
+              onFocus={() => setCustDropdownOpen(true)}
+              onBlur={() => setTimeout(() => setCustDropdownOpen(false), 150)}
+              onChange={(e) => {
+                setCustNameQuery(e.target.value)
+                setSelectedCustomerId(null)
+                setCustDropdownOpen(true)
               }}
+            />
+            {custDropdownOpen &&
+              custNameQuery.trim().length > 0 &&
+              (() => {
+                const q = custNameQuery.trim().toLowerCase()
+                const matches = customers
+                  .filter((c) => c.name.toLowerCase().includes(q))
+                  .slice(0, 8)
+                if (matches.length === 0) return null
+                return (
+                  <div className="absolute z-30 top-full left-0 right-0 mt-1 max-h-60 overflow-auto rounded-md border bg-popover shadow-md">
+                    {matches.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between gap-2"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectCustomer(c)}
+                      >
+                        <span className="truncate">{c.name}</span>
+                        {c.id_rif && (
+                          <span className="text-xs text-muted-foreground shrink-0">{c.id_rif}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )
+              })()}
+          </div>
+          <Input
+            className="w-28 shrink-0"
+            placeholder="Cédula..."
+            value={custCedulaQuery}
+            onChange={(e) => handleCedulaChange(e.target.value)}
+          />
+          <Button
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            title="Agregar cliente"
+            onClick={openCreateCustomer}
+          >
+            <UserPlus className="h-4 w-4" />
+          </Button>
+          {(selectedCustomerId !== null || custNameQuery || custCedulaQuery) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              title="Consumidor Final"
+              onClick={clearCustomer}
             >
-              <User className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">
-                {customers.find((c) => c.id === selectedCustomerId)?.name ?? 'Consumidor Final'}
-              </span>
+              <X className="h-4 w-4" />
             </Button>
-          ) : (
-            <select
-              className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={selectedCustomerId ?? ''}
-              onChange={(e) => setSelectedCustomerId(e.target.value ? parseInt(e.target.value) : null)}
-            >
-              <option value="">Consumidor Final</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
           )}
         </div>
 
@@ -1057,7 +1179,12 @@ export default function PosPage(): JSX.Element {
                   {/* Row 1: name (up to 20 chars) + unit price + delete */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium leading-snug">{capName(item.productName)}</p>
+                      <p className="font-medium leading-snug flex items-center gap-1">
+                        {!item.isCustom && item.quantity > item.stock && (
+                          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                        )}
+                        <span className="truncate">{capName(item.productName)}</span>
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         {item.isCustom ? 'Ingreso personalizado' : `${formatUSD(item.unitPrice)}${item.isByWeight ? '/kg' : ' c/u'}`}
                       </p>
@@ -1137,7 +1264,12 @@ export default function PosPage(): JSX.Element {
                   className="flex items-center gap-3 p-3 border rounded-lg"
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{item.productName}</p>
+                    <p className="font-medium truncate flex items-center gap-1">
+                      {!item.isCustom && item.quantity > item.stock && (
+                        <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                      )}
+                      <span className="truncate">{item.productName}</span>
+                    </p>
                     <p className="text-sm text-muted-foreground">
                       {item.isCustom ? 'Ingreso personalizado' : `${formatUSD(item.unitPrice)}${item.isByWeight ? '/kg' : ' c/u'}`}
                     </p>
@@ -1377,6 +1509,14 @@ export default function PosPage(): JSX.Element {
             <Search className="mr-2 h-5 w-5" />
             Buscar producto
           </Button>
+          <Button
+            variant="outline"
+            className="h-11"
+            onClick={() => setNewProductDialogOpen(true)}
+          >
+            <Package className="mr-2 h-4 w-4" />
+            Agregar producto
+          </Button>
           {(showScannerBtn || showCustomBtn) && (
             <div className="flex gap-2">
               {showScannerBtn && (
@@ -1435,7 +1575,15 @@ export default function PosPage(): JSX.Element {
           </div>
         </div>
 
-        {/* Custom income button */}
+        {/* Add product + custom income buttons */}
+        <Button
+          variant="outline"
+          className="mb-2 w-full"
+          onClick={() => setNewProductDialogOpen(true)}
+        >
+          <Package className="mr-2 h-4 w-4" />
+          Agregar producto
+        </Button>
         <Button
           variant="outline"
           className="mb-4 w-full"
@@ -2056,6 +2204,115 @@ export default function PosPage(): JSX.Element {
         </DialogContent>
       </Dialog>
 
+      {/* New Customer Dialog (crear cliente desde el punto de venta) */}
+      <Dialog open={newCustomerDialogOpen} onOpenChange={setNewCustomerDialogOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Nuevo cliente</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              void handleCreateCustomer()
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nombre</label>
+              <Input
+                placeholder="Nombre del cliente"
+                value={ncName}
+                onChange={(e) => setNcName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Cédula / RIF</label>
+              <Input
+                placeholder="Ej: V-12345678"
+                value={ncCedula}
+                onChange={(e) => setNcCedula(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setNewCustomerDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={!ncName.trim()}>
+                Crear
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Product Dialog (crear producto y agregarlo al carrito) */}
+      <Dialog open={newProductDialogOpen} onOpenChange={setNewProductDialogOpen}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Agregar producto</DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              void handleCreateProduct()
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Nombre</label>
+              <Input
+                placeholder="Nombre del producto"
+                value={npName}
+                onChange={(e) => setNpName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Precio (USD)</label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="0.00"
+                value={npPrice}
+                onChange={(e) => setNpPrice(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Stock inicial</label>
+              <Input
+                type="number"
+                step="1"
+                min="0"
+                placeholder="0"
+                value={npStock}
+                onChange={(e) => setNpStock(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Código de barras (opcional)</label>
+              <Input
+                placeholder="Opcional"
+                value={npBarcode}
+                onChange={(e) => setNpBarcode(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setNewProductDialogOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={!npName.trim() || !npPrice || isNaN(parseFloat(npPrice)) || parseFloat(npPrice) <= 0}
+              >
+                Crear y agregar
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       {/* Pause Cart Dialog */}
       <Dialog open={pauseDialogOpen} onOpenChange={setPauseDialogOpen}>
         <DialogContent className="max-w-xs">
@@ -2218,67 +2475,6 @@ export default function PosPage(): JSX.Element {
                 No se encontraron productos
               </p>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Mobile: dedicated customer picker (search by name / last name / cedula) */}
-      {mobile && mobileScreen === 'customer' && (
-        <div className="fixed inset-0 z-50 bg-background flex flex-col">
-          <div className="flex items-center gap-2 p-3 border-b">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
-              onClick={() => setMobileScreen(null)}
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                autoFocus
-                className="pl-9 h-11"
-                placeholder="Nombre, apellido o cedula..."
-                value={customerQuery}
-                onChange={(e) => setCustomerQuery(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto">
-            <button
-              className="w-full text-left p-4 border-b hover:bg-accent transition-colors font-medium"
-              onClick={() => {
-                setSelectedCustomerId(null)
-                setMobileScreen(null)
-              }}
-            >
-              Consumidor Final
-            </button>
-            {customers
-              .filter((c) => {
-                const q = customerQuery.trim().toLowerCase()
-                if (!q) return true
-                return (
-                  c.name.toLowerCase().includes(q) ||
-                  (c.id_rif ?? '').toLowerCase().includes(q)
-                )
-              })
-              .map((c) => (
-                <button
-                  key={c.id}
-                  className="w-full text-left p-4 border-b hover:bg-accent transition-colors flex items-center justify-between gap-3"
-                  onClick={() => {
-                    setSelectedCustomerId(c.id)
-                    setMobileScreen(null)
-                  }}
-                >
-                  <span className="truncate">{c.name}</span>
-                  {c.id_rif && (
-                    <span className="text-xs text-muted-foreground shrink-0">{c.id_rif}</span>
-                  )}
-                </button>
-              ))}
           </div>
         </div>
       )}

@@ -146,9 +146,15 @@ export class InvoiceService {
         `INSERT INTO invoice_items (invoice_id, product_id, product_name, quantity, unit_price, subtotal)
          VALUES (?, ?, ?, ?, ?, ?)`
       )
+      // Si el producto se vendió sin stock suficiente, primero se "repone" la
+      // cantidad vendida (sube el stock a lo vendido) y luego se descuenta esa
+      // misma cantidad. Así la venta nunca falla y el stock nunca queda negativo.
+      const topUpStock = this.db.prepare(
+        `UPDATE products SET stock = ? WHERE id = ? AND stock < ?`
+      )
       const decrementStock = this.db.prepare(
         `UPDATE products SET stock = stock - ?, updated_at = datetime('now')
-         WHERE id = ? AND stock >= ?`
+         WHERE id = ?`
       )
 
       for (const item of data.items) {
@@ -161,10 +167,8 @@ export class InvoiceService {
           item.quantity * item.unitPrice
         )
         if (!item.isCustom && item.productId) {
-          const stockResult = decrementStock.run(item.quantity, item.productId, item.quantity)
-          if (stockResult.changes === 0) {
-            throw new Error(`Stock insuficiente para: ${item.productName}`)
-          }
+          topUpStock.run(item.quantity, item.productId, item.quantity)
+          decrementStock.run(item.quantity, item.productId)
         }
       }
 

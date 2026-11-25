@@ -99,6 +99,20 @@ export function registerLoyaltyHandlers(db: Database.Database): void {
   })
   ipcMain.handle('loyalty:ticketsPrintedIds', () => service.ticketsPrintedIds())
   ipcMain.handle('loyalty:earnedTicketsReport', () => service.earnedTicketsReport())
+  // Tickets manuales / por canje (sin factura)
+  ipcMain.handle(
+    'loyalty:adjustTickets',
+    (_event, customerId: number, tickets: number, note?: string) =>
+      service.adjustTickets(customerId, tickets, note)
+  )
+  ipcMain.handle('loyalty:manualTicketsReport', () => service.manualTicketsReport())
+  ipcMain.handle('loyalty:manualTicketPrintData', (_event, ledgerId: number) =>
+    service.manualTicketPrintData(ledgerId)
+  )
+  ipcMain.handle('loyalty:markManualTicketsPrinted', (_event, ledgerId: number) => {
+    service.markManualTicketsPrinted(ledgerId)
+    return true
+  })
   ipcMain.handle('loyalty:redemptionsReport', (_event, limit?: number) =>
     service.redemptionsReport(limit)
   )

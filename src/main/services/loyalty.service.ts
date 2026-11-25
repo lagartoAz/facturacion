@@ -405,6 +405,87 @@ export class LoyaltyService {
       .run(invoiceId)
   }
 
+  // Agrega (o quita, si es negativo) tickets a mano. Crea una fila de tipo
+  // 'adjust' sin factura; devuelve el id de la fila para poder imprimirla.
+  adjustTickets(customerId: number, tickets: number, note?: string): { balance: number; id: number } {
+    if (!Number.isFinite(tickets) || tickets === 0) throw new Error('Ajuste de tickets invalido')
+    const info = this.db
+      .prepare(
+        "INSERT INTO loyalty_tickets_ledger (customer_id, invoice_id, raffle_id, tickets, type, note) VALUES (?, NULL, NULL, ?, 'adjust', ?)"
+      )
+      .run(customerId, Math.round(tickets), note ?? null)
+    return { balance: this.ticketBalance(customerId), id: Number(info.lastInsertRowid) }
+  }
+
+  // Tickets que no vienen de una venta: canjes por puntos ('redeem') y ajustes
+  // manuales ('adjust'). Una fila por lote, con su estado de impresión, para
+  // que el personal pueda imprimirlos (y reimprimir) desde la pestaña Tickets.
+  manualTicketsReport(): {
+    id: number
+    customer_name: string | null
+    tickets: number
+    type: string
+    note: string | null
+    created_at: string
+    printed: boolean
+  }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT t.id as id, c.name as customer_name, t.tickets as tickets, t.type as type,
+                t.note as note, t.created_at as created_at,
+                CASE WHEN p.ledger_id IS NULL THEN 0 ELSE 1 END as printed
+         FROM loyalty_tickets_ledger t
+         LEFT JOIN customers c ON c.id = t.customer_id
+         LEFT JOIN loyalty_manual_ticket_prints p ON p.ledger_id = t.id
+         WHERE t.invoice_id IS NULL AND t.tickets > 0 AND t.type IN ('redeem', 'adjust')
+         ORDER BY t.id DESC`
+      )
+      .all() as {
+      id: number
+      customer_name: string | null
+      tickets: number
+      type: string
+      note: string | null
+      created_at: string
+      printed: number
+    }[]
+    return rows.map((r) => ({ ...r, printed: !!r.printed }))
+  }
+
+  // Datos para imprimir los tickets de un lote manual/por canje. Reutiliza la
+  // forma InvoiceTickets; los códigos se prefijan con "M" + id del lote.
+  manualTicketPrintData(ledgerId: number): InvoiceTickets {
+    const row = this.db
+      .prepare(
+        `SELECT t.tickets as tickets, c.name as customer_name
+         FROM loyalty_tickets_ledger t
+         LEFT JOIN customers c ON c.id = t.customer_id
+         WHERE t.id = ? AND t.invoice_id IS NULL`
+      )
+      .get(ledgerId) as { tickets: number; customer_name: string | null } | undefined
+    const ref = `M${ledgerId}`
+    if (!row || row.tickets <= 0) {
+      return { invoiceNumber: ref, customerName: null, raffleName: null, count: 0, codes: [] }
+    }
+    const raffle = this.getActiveRaffle()
+    const count = Math.floor(row.tickets)
+    return {
+      invoiceNumber: ref,
+      customerName: row.customer_name,
+      raffleName: raffle?.name ?? null,
+      count,
+      codes: Array.from({ length: count }, (_, i) => `${ref}-${i + 1}`)
+    }
+  }
+
+  markManualTicketsPrinted(ledgerId: number): void {
+    this.db
+      .prepare(
+        "INSERT INTO loyalty_manual_ticket_prints (ledger_id, printed_at) VALUES (?, datetime('now', 'localtime')) ON CONFLICT(ledger_id) DO UPDATE SET printed_at = excluded.printed_at"
+      )
+      .run(ledgerId)
+  }
+
   ticketsPrintedIds(): number[] {
     return (this.db.prepare('SELECT invoice_id FROM loyalty_ticket_prints').all() as {
       invoice_id: number
@@ -817,7 +898,8 @@ export class LoyaltyService {
     if (!ctx.customerId) return 0
     const cfg = this.getConfig()
     if (!cfg.enabled || !pointsActive(cfg.mode)) return 0
-    if (cfg.exclude_credit && ctx.paymentMethod === 'credit') return 0
+    // Las ventas a crédito nunca acumulan puntos (independiente del ajuste).
+    if (ctx.paymentMethod === 'credit') return 0
     if (cfg.currency_filter && ctx.currency !== cfg.currency_filter) return 0
 
     let points = 0
@@ -861,7 +943,8 @@ export class LoyaltyService {
     if (!ctx.customerId) return 0
     const cfg = this.getConfig()
     if (!cfg.enabled || !ticketsActive(cfg.mode)) return 0
-    if (cfg.exclude_credit && ctx.paymentMethod === 'credit') return 0
+    // Las ventas a crédito nunca acumulan tickets (independiente del ajuste).
+    if (ctx.paymentMethod === 'credit') return 0
     if (cfg.currency_filter && ctx.currency !== cfg.currency_filter) return 0
 
     let tickets = 0

@@ -56,6 +56,8 @@ export default function LoyaltyCustomers(): JSX.Element {
   const [selected, setSelected] = useState<CustomerPoints | null>(null)
   const [history, setHistory] = useState<LoyaltyEntry[]>([])
   const [redeemPoints, setRedeemPoints] = useState('')
+  const [addPoints, setAddPoints] = useState('')
+  const [addTickets, setAddTickets] = useState('')
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
@@ -74,6 +76,8 @@ export default function LoyaltyCustomers(): JSX.Element {
   async function openCustomer(c: CustomerPoints): Promise<void> {
     setSelected(c)
     setRedeemPoints('')
+    setAddPoints('')
+    setAddTickets('')
     setOpen(true)
     setHistory((await window.api.getLoyaltyHistory(c.customer_id, 50)) as LoyaltyEntry[])
   }
@@ -99,6 +103,38 @@ export default function LoyaltyCustomers(): JSX.Element {
       await refreshSelected(selected.customer_id)
     } catch (e) {
       alert((e as Error).message || 'No se pudo canjear')
+    }
+  }
+
+  async function doAddPoints(): Promise<void> {
+    if (!selected) return
+    const n = parseInt(addPoints, 10)
+    if (!n || n <= 0) {
+      alert('Ingresa una cantidad de puntos valida')
+      return
+    }
+    try {
+      await window.api.adjustLoyaltyPoints(selected.customer_id, n, 'Ajuste manual')
+      setAddPoints('')
+      await refreshSelected(selected.customer_id)
+    } catch (e) {
+      alert((e as Error).message || 'No se pudieron agregar los puntos')
+    }
+  }
+
+  async function doAddTickets(): Promise<void> {
+    if (!selected) return
+    const n = parseInt(addTickets, 10)
+    if (!n || n <= 0) {
+      alert('Ingresa una cantidad de tickets valida')
+      return
+    }
+    try {
+      await window.api.adjustLoyaltyTickets(selected.customer_id, n, 'Ajuste manual')
+      setAddTickets('')
+      await refreshSelected(selected.customer_id)
+    } catch (e) {
+      alert((e as Error).message || 'No se pudieron agregar los tickets')
     }
   }
 
@@ -242,6 +278,57 @@ export default function LoyaltyCustomers(): JSX.Element {
                       )
                     })}
                   </div>
+                </div>
+              )}
+
+              {(withPoints || withTickets) && (
+                <div className="space-y-2 rounded-lg border p-3">
+                  <p className="text-sm font-medium">Agregar a gusto</p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    {withPoints && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Puntos</label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={addPoints}
+                            onChange={(e) => setAddPoints(e.target.value)}
+                            className="w-24"
+                            placeholder="0"
+                          />
+                        </div>
+                        <Button size="sm" onClick={doAddPoints}>
+                          <Star className="mr-1 h-4 w-4" />
+                          Agregar puntos
+                        </Button>
+                      </>
+                    )}
+                    {withTickets && (
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-xs text-muted-foreground">Tickets</label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={addTickets}
+                            onChange={(e) => setAddTickets(e.target.value)}
+                            className="w-24"
+                            placeholder="0"
+                          />
+                        </div>
+                        <Button size="sm" variant="outline" onClick={doAddTickets}>
+                          <Ticket className="mr-1 h-4 w-4" />
+                          Agregar tickets
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                  {withTickets && (
+                    <p className="text-xs text-muted-foreground">
+                      Los tickets agregados se pueden imprimir desde la pestaña Tickets.
+                    </p>
+                  )}
                 </div>
               )}
 

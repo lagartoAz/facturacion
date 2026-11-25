@@ -60,3 +60,23 @@ export async function printRaffleTickets(
   await window.api.markTicketsPrinted(invoiceId)
   return { ok: true, count: t.count }
 }
+
+// Prints the tickets of a manual / points-redeemed batch (no invoice) and
+// records them as printed. Mirrors printRaffleTickets but keyed by ledger id.
+export async function printManualTickets(
+  ledgerId: number
+): Promise<{ ok: boolean; count: number; error?: string }> {
+  const t = (await window.api.getManualTicketPrintData(ledgerId)) as InvoiceTickets
+  if (!t || t.count === 0) {
+    return { ok: false, count: 0, error: 'No hay tickets para imprimir' }
+  }
+  const settings = (await window.api.getAllSettings()) as Record<string, string>
+  const store = (settings.receipt_title || '').trim()
+  const res = (await window.api.printReceipt(buildTicketsHtml(t, store))) as {
+    success: boolean
+    error?: string
+  }
+  if (res && res.success === false) return { ok: false, count: t.count, error: res.error }
+  await window.api.markManualTicketsPrinted(ledgerId)
+  return { ok: true, count: t.count }
+}
