@@ -1,6 +1,12 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
-import { LoyaltyService, type LoyaltyConfig, type Reward } from '../services/loyalty.service'
+import {
+  LoyaltyService,
+  type LoyaltyConfig,
+  type LoyaltyLevel,
+  type LevelBenefit,
+  type Reward
+} from '../services/loyalty.service'
 import { SettingsService } from '../services/settings.service'
 import { isLicensed, writeLicense, removeLicense } from '../services/license.service'
 
@@ -37,6 +43,43 @@ export function registerLoyaltyHandlers(db: Database.Database): void {
   ipcMain.handle('loyalty:setConfig', (_event, cfg: Partial<LoyaltyConfig>) =>
     service.setConfig(cfg)
   )
+
+  // Levels + benefits
+  ipcMain.handle('loyalty:listLevels', () => service.listLevels())
+  ipcMain.handle('loyalty:createLevel', (_event, level: Omit<LoyaltyLevel, 'id'>) =>
+    service.createLevel(level)
+  )
+  ipcMain.handle('loyalty:updateLevel', (_event, id: number, level: Partial<LoyaltyLevel>) => {
+    service.updateLevel(id, level)
+    return service.listLevels()
+  })
+  ipcMain.handle('loyalty:deleteLevel', (_event, id: number) => {
+    service.deleteLevel(id)
+    return service.listLevels()
+  })
+  ipcMain.handle('loyalty:levelBenefits', (_event, levelId: number) =>
+    service.levelBenefits(levelId)
+  )
+  ipcMain.handle(
+    'loyalty:setLevelBenefits',
+    (_event, levelId: number, benefits: Omit<LevelBenefit, 'id' | 'level_id'>[]) => {
+      service.setLevelBenefits(levelId, benefits)
+      return service.levelBenefits(levelId)
+    }
+  )
+  ipcMain.handle('loyalty:customerLevel', (_event, customerId: number) =>
+    service.customerLevel(customerId)
+  )
+  ipcMain.handle('loyalty:levelDiscount', (_event, customerId: number | null, subtotal: number) =>
+    service.levelDiscountFor(customerId, subtotal)
+  )
+  ipcMain.handle('loyalty:ticketBalance', (_event, customerId: number) =>
+    service.ticketBalance(customerId)
+  )
+  ipcMain.handle('loyalty:processMonthly', () => {
+    service.processMonthlyBenefits()
+    return true
+  })
 
   // Points
   ipcMain.handle('loyalty:balance', (_event, customerId: number) => service.balance(customerId))

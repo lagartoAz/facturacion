@@ -64,6 +64,46 @@ La licencia y los datos de puntos viven en el **servidor** (la PC principal). La
 terminales "Acceso" reenvían las llamadas de fidelidad por la LAN, así que basta
 activar el complemento una vez en el servidor.
 
+## Novedades (v3)
+
+En Fidelidad → **Reglas**, la primera tarjeta es el **modo del programa**:
+
+- **Solo puntos:** una sola moneda (puntos), con niveles y premios.
+- **Solo tickets:** los clientes acumulan **tickets** (participaciones de rifa). No
+  hay puntos ni niveles.
+- **Puntos y tickets:** ambas monedas a la vez, con reglas **independientes**.
+
+Según el modo aparecen/ocultan las secciones y pestañas.
+
+### Puntos vs. tickets
+- **Puntos:** moneda que se canjea por premios y define el nivel del cliente.
+- **Tickets:** moneda independiente que solo da participaciones de rifa. Se ganan
+  con sus propias reglas (por factura y/o por cada N USD) y se **acumulan**: un
+  cliente con N tickets aparece N veces en la rifa. En *solo puntos*, las
+  participaciones se siguen derivando de los puntos (como antes).
+
+### Topes
+- **Por factura:** tope opcional de puntos (def. **100**) y de tickets (def. **3**)
+  que una sola factura puede otorgar.
+- **Acumulables:** tope de tickets que un cliente puede acumular para la rifa
+  (def. **5**; 0 = sin límite). Al llegar al tope deja de sumar.
+
+### Niveles de cliente (solo con puntos)
+- Niveles editables (Casual, Bronce, Plata, Oro, Diamante) con umbral, color y
+  **beneficios**. La pestaña **Niveles** solo aparece si los puntos están activos.
+- El nivel se calcula por los puntos **ganados** en una ventana móvil
+  (configurable, def. **12 meses**). Canjear puntos no baja de nivel.
+- **Beneficios por nivel:** descuento fijo (se aplica solo en el POS al cliente de
+  ese nivel), cupón mensual (se emite 1 cupón al mes por miembro), rifa mensual
+  del nivel (se crea una rifa exclusiva por mes y cada miembro recibe 1 ticket que
+  **caduca al sortearla**) y personalizado (texto libre).
+- Los procesos mensuales corren solos al abrir la app y la pestaña Fidelidad
+  (idempotentes por mes; no hay planificador).
+
+### Premios (3 tipos)
+- **Descuento** (USD o %), **Ticket** (otorga participaciones de rifa) y
+  **Personalizado** (premio libre). Todos se canjean con puntos.
+
 ## Funciones (v2)
 
 ### Formas de ganar puntos (combinables, se suman)

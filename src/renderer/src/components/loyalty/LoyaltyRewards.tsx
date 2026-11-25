@@ -7,23 +7,32 @@ import { Gift, Plus, Trash2, Pencil, X } from 'lucide-react'
 interface Reward {
   id: number
   name: string
-  kind: 'discount_usd' | 'discount_pct' | 'custom'
+  kind: 'discount_usd' | 'discount_pct' | 'ticket' | 'custom'
   cost_points: number
   value: number
+  tickets: number
   active: number
 }
 
 const KINDS: { value: Reward['kind']; label: string }[] = [
   { value: 'discount_usd', label: 'Descuento USD' },
   { value: 'discount_pct', label: 'Descuento %' },
+  { value: 'ticket', label: 'Tickets de rifa' },
   { value: 'custom', label: 'Premio libre' }
 ]
 
-const emptyForm = { name: '', kind: 'discount_usd' as Reward['kind'], cost_points: 100, value: 1 }
+const emptyForm = {
+  name: '',
+  kind: 'discount_usd' as Reward['kind'],
+  cost_points: 100,
+  value: 1,
+  tickets: 1
+}
 
-export function rewardSummary(r: Pick<Reward, 'kind' | 'value'>): string {
+export function rewardSummary(r: Pick<Reward, 'kind' | 'value' | 'tickets'>): string {
   if (r.kind === 'discount_usd') return `Descuento de $${r.value}`
   if (r.kind === 'discount_pct') return `${r.value}% de descuento`
+  if (r.kind === 'ticket') return `${r.tickets} ticket(s) de rifa`
   return 'Premio definido por la tienda'
 }
 
@@ -48,7 +57,13 @@ export default function LoyaltyRewards(): JSX.Element {
   }
 
   function startEdit(r: Reward): void {
-    setForm({ name: r.name, kind: r.kind, cost_points: r.cost_points, value: r.value })
+    setForm({
+      name: r.name,
+      kind: r.kind,
+      cost_points: r.cost_points,
+      value: r.value,
+      tickets: r.tickets || 1
+    })
     setEditingId(r.id)
     setShowForm(true)
   }
@@ -139,7 +154,7 @@ export default function LoyaltyRewards(): JSX.Element {
                   className="w-32"
                 />
               </div>
-              {form.kind !== 'custom' && (
+              {(form.kind === 'discount_usd' || form.kind === 'discount_pct') && (
                 <div className="space-y-1">
                   <label className="text-xs text-muted-foreground">
                     {form.kind === 'discount_pct' ? 'Porcentaje' : 'Monto USD'}
@@ -150,6 +165,19 @@ export default function LoyaltyRewards(): JSX.Element {
                     step={form.kind === 'discount_pct' ? '1' : '0.01'}
                     value={form.value}
                     onChange={(e) => setForm({ ...form, value: parseFloat(e.target.value) || 0 })}
+                    className="w-32"
+                  />
+                </div>
+              )}
+              {form.kind === 'ticket' && (
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Tickets que otorga</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={form.tickets}
+                    onChange={(e) => setForm({ ...form, tickets: parseInt(e.target.value) || 0 })}
                     className="w-32"
                   />
                 </div>

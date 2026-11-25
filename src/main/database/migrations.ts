@@ -530,4 +530,119 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 24')
   }
+
+  if (version < 25) {
+    // Loyalty v3: separa puntos y tickets en dos monedas, añade niveles de
+    // cliente con beneficios, topes por factura/acumulación y rifas mensuales
+    // por nivel. El "modo" (loyalty_mode) decide qué monedas están activas.
+    const def = (k: string, v: string): void => {
+      db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').run(k, v)
+    }
+
+    // Ledger de tickets (moneda de rifa), análogo a loyalty_ledger: append-only,
+    // el saldo es SUM(tickets). Un ticket puede pertenecer a una rifa concreta
+    // (raffle_id) — p. ej. el ticket mensual de nivel, que caduca al sortearla.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS loyalty_tickets_ledger (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        invoice_id  INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+        raffle_id   INTEGER REFERENCES loyalty_raffles(id) ON DELETE SET NULL,
+        tickets     INTEGER NOT NULL,
+        type        TEXT NOT NULL CHECK (type IN ('earn','monthly','redeem','expire','adjust')),
+        note        TEXT,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_tickets_customer ON loyalty_tickets_ledger(customer_id);
+      CREATE INDEX IF NOT EXISTS idx_tickets_raffle   ON loyalty_tickets_ledger(raffle_id);
+
+      -- Niveles de cliente (editables). El nivel se calcula por los puntos
+      -- GANADOS en una ventana móvil (loyalty_level_window_months).
+      CREATE TABLE IF NOT EXISTS loyalty_levels (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        min_points INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        color      TEXT
+      );
+
+      -- Beneficios de cada nivel (un nivel puede tener varios).
+      CREATE TABLE IF NOT EXISTS loyalty_level_benefits (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        level_id INTEGER NOT NULL REFERENCES loyalty_levels(id) ON DELETE CASCADE,
+        kind     TEXT NOT NULL CHECK (kind IN ('discount_fixed','monthly_coupon','monthly_raffle','custom')),
+        value    REAL NOT NULL DEFAULT 0,
+        unit     TEXT,
+        note     TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_level_benefits_level ON loyalty_level_benefits(level_id);
+    `)
+
+    // Rifas: distinguir la rifa general de las rifas mensuales por nivel.
+    db.exec(`
+      ALTER TABLE loyalty_raffles ADD COLUMN kind     TEXT NOT NULL DEFAULT 'general';
+      ALTER TABLE loyalty_raffles ADD COLUMN level_id INTEGER REFERENCES loyalty_levels(id) ON DELETE SET NULL;
+      ALTER TABLE loyalty_raffles ADD COLUMN period   TEXT;
+    `)
+
+    // Cupones: distinguir los emitidos automáticamente por un beneficio mensual
+    // de nivel (deduplicados por período) de los canjeados con puntos.
+    db.exec(`
+      ALTER TABLE loyalty_coupons ADD COLUMN source TEXT NOT NULL DEFAULT 'reward';
+      ALTER TABLE loyalty_coupons ADD COLUMN period TEXT;
+    `)
+
+    // Premios: añadir el tipo 'ticket' (otorga participaciones de rifa) y el nº
+    // de tickets que da. El CHECK de 'kind' no se puede ALTERar en SQLite, así
+    // que recreamos la tabla con el CHECK ampliado y copiamos las filas.
+    db.exec(`
+      CREATE TABLE loyalty_rewards_new (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        name        TEXT NOT NULL,
+        kind        TEXT NOT NULL CHECK (kind IN ('discount_usd', 'discount_pct', 'ticket', 'custom')),
+        cost_points INTEGER NOT NULL CHECK (cost_points > 0),
+        value       REAL NOT NULL DEFAULT 0,
+        tickets     INTEGER NOT NULL DEFAULT 0,
+        active      INTEGER NOT NULL DEFAULT 1,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+      );
+      INSERT INTO loyalty_rewards_new (id, name, kind, cost_points, value, tickets, active, created_at)
+        SELECT id, name, kind, cost_points, value, 0, active, created_at FROM loyalty_rewards;
+      DROP TABLE loyalty_rewards;
+      ALTER TABLE loyalty_rewards_new RENAME TO loyalty_rewards;
+    `)
+
+    // Modo del programa: qué monedas están activas.
+    def('loyalty_mode', 'points') // 'points' | 'tickets' | 'both'
+    // Topes por factura (toggle + valor). Por defecto 100 pts y 3 tickets.
+    def('loyalty_cap_points_enabled', '1')
+    def('loyalty_max_points_per_invoice', '100')
+    def('loyalty_cap_tickets_enabled', '1')
+    def('loyalty_max_tickets_per_invoice', '3')
+    // Tope de tickets acumulables por cliente en la rifa vigente (0 = ilimitado).
+    def('loyalty_max_tickets_accumulable', '5')
+    // Reglas propias para ganar tickets (independientes de los puntos).
+    def('loyalty_tickets_earn_invoice', '1')
+    def('loyalty_tickets_per_invoice', '1')
+    def('loyalty_tickets_earn_money', '0')
+    def('loyalty_usd_per_ticket', '0') // 1 ticket por cada N USD (0 = off)
+    // Niveles de cliente.
+    def('loyalty_levels_enabled', '1')
+    def('loyalty_level_window_months', '12')
+
+    // Niveles por defecto (umbrales ilustrativos sobre puntos ganados en la ventana).
+    const lvl = db.prepare(
+      'INSERT INTO loyalty_levels (name, min_points, sort_order, color) VALUES (?, ?, ?, ?)'
+    )
+    const haveLevels = db.prepare('SELECT COUNT(*) as n FROM loyalty_levels').get() as { n: number }
+    if (haveLevels.n === 0) {
+      lvl.run('Casual', 0, 0, '#94a3b8')
+      lvl.run('Bronce', 500, 1, '#b45309')
+      lvl.run('Plata', 1500, 2, '#64748b')
+      lvl.run('Oro', 4000, 3, '#d97706')
+      lvl.run('Diamante', 10000, 4, '#0891b2')
+    }
+
+    db.pragma('user_version = 25')
+  }
 }

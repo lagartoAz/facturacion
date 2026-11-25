@@ -1,18 +1,24 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { useLoyalty } from '@/hooks/useLoyalty'
-import { Gift, Lock, Users, Sliders, Award, Ticket } from 'lucide-react'
+import { useLoyalty, pointsActive } from '@/hooks/useLoyalty'
+import { Gift, Lock, Users, Sliders, Award, Ticket, BadgeCheck } from 'lucide-react'
 import LoyaltyCustomers from '@/components/loyalty/LoyaltyCustomers'
 import LoyaltyRules from '@/components/loyalty/LoyaltyRules'
 import LoyaltyRewards from '@/components/loyalty/LoyaltyRewards'
 import LoyaltyRaffle from '@/components/loyalty/LoyaltyRaffle'
+import LoyaltyLevels from '@/components/loyalty/LoyaltyLevels'
 
-type Tab = 'clientes' | 'reglas' | 'premios' | 'rifa'
+type Tab = 'clientes' | 'reglas' | 'niveles' | 'premios' | 'rifa'
 
 export default function LoyaltyPage(): JSX.Element {
   const { status } = useLoyalty()
   const [tab, setTab] = useState<Tab>('clientes')
+
+  // Run the monthly perks when the page opens (idempotent per month).
+  useEffect(() => {
+    if (status.enabled) void window.api.processMonthlyBenefits()
+  }, [status.enabled])
 
   // Safety net: the route is reachable even when the add-on is off (e.g. the
   // license was removed). Show a locked notice instead of an empty page.
@@ -32,10 +38,12 @@ export default function LoyaltyPage(): JSX.Element {
     )
   }
 
+  const withPoints = pointsActive(status.mode)
   const tabs: { key: Tab; label: string; icon: typeof Users; show: boolean }[] = [
     { key: 'clientes', label: 'Clientes', icon: Users, show: true },
     { key: 'reglas', label: 'Reglas', icon: Sliders, show: true },
-    { key: 'premios', label: 'Premios', icon: Award, show: status.rewards_enabled },
+    { key: 'niveles', label: 'Niveles', icon: BadgeCheck, show: withPoints && status.levels_enabled },
+    { key: 'premios', label: 'Premios', icon: Award, show: withPoints && status.rewards_enabled },
     { key: 'rifa', label: 'Rifa', icon: Ticket, show: status.raffle_enabled }
   ]
 
@@ -67,6 +75,7 @@ export default function LoyaltyPage(): JSX.Element {
 
       {activeTab === 'clientes' && <LoyaltyCustomers />}
       {activeTab === 'reglas' && <LoyaltyRules />}
+      {activeTab === 'niveles' && <LoyaltyLevels />}
       {activeTab === 'premios' && <LoyaltyRewards />}
       {activeTab === 'rifa' && <LoyaltyRaffle />}
     </div>

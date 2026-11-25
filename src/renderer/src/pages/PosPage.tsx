@@ -234,6 +234,8 @@ export default function PosPage(): JSX.Element {
   const [activeCoupons, setActiveCoupons] = useState<CouponOpt[]>([])
   const [affordableRewards, setAffordableRewards] = useState<RewardOpt[]>([])
   const [selectedCoupon, setSelectedCoupon] = useState<CouponOpt | null>(null)
+  // Automatic USD discount the selected customer's loyalty level grants.
+  const [levelDiscount, setLevelDiscount] = useState(0)
   const [salePreview, setSalePreview] = useState<{ points: number; tickets: number }>({
     points: 0,
     tickets: 0
@@ -577,6 +579,24 @@ export default function PosPage(): JSX.Element {
     void loadCoupons(selectedCustomerId)
   }, [loyalty.enabled, selectedCustomerId, loadCoupons])
 
+  // Automatic discount from the customer's loyalty level (recomputed as the
+  // cart changes so the shown total matches what the backend will charge).
+  useEffect(() => {
+    const sub = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0)
+    if (!loyalty.enabled || !selectedCustomerId || sub <= 0) {
+      setLevelDiscount(0)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const d = (await window.api.getLevelDiscount(selectedCustomerId, sub)) as number
+      if (!cancelled) setLevelDiscount(d || 0)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [loyalty.enabled, selectedCustomerId, cart])
+
   // Live preview of the points / raffle tickets the current cart will grant the
   // selected customer (uses the backend so it matches the real earning rules).
   useEffect(() => {
@@ -586,7 +606,8 @@ export default function PosPage(): JSX.Element {
     }
     let cancelled = false
     const t = cart.reduce((s, i) => s + i.unitPrice * i.quantity, 0)
-    const disc = selectedCoupon ? discountOf(selectedCoupon.kind, selectedCoupon.value, t) : 0
+    const couponDisc = selectedCoupon ? discountOf(selectedCoupon.kind, selectedCoupon.value, t) : 0
+    const disc = Math.min(t, couponDisc + levelDiscount)
     const currency =
       paymentMethod === 'cash' ? cashCurrency : paymentCop ? 'COP' : paymentVes ? 'VES' : 'USD'
     void (async () => {
@@ -603,15 +624,17 @@ export default function PosPage(): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [loyalty.enabled, selectedCustomerId, cart, selectedCoupon, paymentMethod, cashCurrency, paymentVes, paymentCop])
+  }, [loyalty.enabled, selectedCustomerId, cart, selectedCoupon, levelDiscount, paymentMethod, cashCurrency, paymentVes, paymentCop])
 
   const subtotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0)
   const couponDiscount = selectedCoupon
     ? discountOf(selectedCoupon.kind, selectedCoupon.value, subtotal)
     : 0
-  // `total` is the amount actually due (after the coupon); the rest of the POS
+  // Total discount = coupon + level, capped at the subtotal (matches the backend).
+  const totalDiscount = Math.min(subtotal, couponDiscount + levelDiscount)
+  // `total` is the amount actually due (after discounts); the rest of the POS
   // keeps using it for payments, equivalents and the mixed-payment check.
-  const total = Math.max(0, subtotal - couponDiscount)
+  const total = Math.max(0, subtotal - totalDiscount)
 
   async function handleConfirmPayment(): Promise<void> {
     if (paymentMethod === 'credit' && !selectedCustomerId) {
@@ -1177,16 +1200,24 @@ export default function PosPage(): JSX.Element {
 
         {/* Totals */}
         <div className="border-t pt-4 mt-4 space-y-2">
-          {couponDiscount > 0 && (
+          {totalDiscount > 0 && (
             <>
               <div className="flex justify-between text-sm text-muted-foreground">
                 <span>Subtotal</span>
                 <span>{formatUSD(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-sm text-green-600">
-                <span>Descuento{selectedCoupon ? ` (${selectedCoupon.name})` : ''}</span>
-                <span>-{formatUSD(couponDiscount)}</span>
-              </div>
+              {couponDiscount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Descuento{selectedCoupon ? ` (${selectedCoupon.name})` : ''}</span>
+                  <span>-{formatUSD(couponDiscount)}</span>
+                </div>
+              )}
+              {levelDiscount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Descuento por nivel</span>
+                  <span>-{formatUSD(levelDiscount)}</span>
+                </div>
+              )}
             </>
           )}
           <div className="flex justify-between text-lg font-bold">

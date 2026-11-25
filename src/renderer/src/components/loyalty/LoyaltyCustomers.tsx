@@ -9,7 +9,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { formatUSD } from '@/lib/currency'
-import { useLoyalty } from '@/hooks/useLoyalty'
+import { useLoyalty, pointsActive, ticketsActive } from '@/hooks/useLoyalty'
 import { Star, Ticket, ChevronRight } from 'lucide-react'
 import { rewardSummary } from './LoyaltyRewards'
 
@@ -17,7 +17,10 @@ interface CustomerPoints {
   customer_id: number
   name: string
   points: number
+  tickets: number
   entries: number
+  level_name: string | null
+  level_color: string | null
 }
 
 interface LoyaltyEntry {
@@ -31,9 +34,10 @@ interface LoyaltyEntry {
 interface Reward {
   id: number
   name: string
-  kind: 'discount_usd' | 'discount_pct' | 'custom'
+  kind: 'discount_usd' | 'discount_pct' | 'ticket' | 'custom'
   cost_points: number
   value: number
+  tickets: number
   active: number
 }
 
@@ -45,6 +49,8 @@ const TYPE_LABEL: Record<string, string> = {
 
 export default function LoyaltyCustomers(): JSX.Element {
   const { status } = useLoyalty()
+  const withPoints = pointsActive(status.mode)
+  const withTickets = ticketsActive(status.mode)
   const [balances, setBalances] = useState<CustomerPoints[]>([])
   const [rewards, setRewards] = useState<Reward[]>([])
   const [selected, setSelected] = useState<CustomerPoints | null>(null)
@@ -130,14 +136,27 @@ export default function LoyaltyCustomers(): JSX.Element {
                 className="flex w-full items-center gap-3 p-3 text-sm transition-colors hover:bg-muted/60"
               >
                 <span className="flex-1 truncate text-left font-medium">{c.name}</span>
-                <span className="inline-flex items-center gap-1 font-semibold">
-                  <Star className="h-4 w-4 text-amber-500" />
-                  {c.points}
-                </span>
-                {status.raffle_enabled && (
+                {withPoints && c.level_name && (
+                  <span
+                    className="rounded-full border px-2 py-0.5 text-xs font-medium"
+                    style={{
+                      borderColor: c.level_color ?? undefined,
+                      color: c.level_color ?? undefined
+                    }}
+                  >
+                    {c.level_name}
+                  </span>
+                )}
+                {withPoints && (
+                  <span className="inline-flex items-center gap-1 font-semibold">
+                    <Star className="h-4 w-4 text-amber-500" />
+                    {c.points}
+                  </span>
+                )}
+                {withTickets && (
                   <span className="inline-flex items-center gap-1 text-muted-foreground">
                     <Ticket className="h-4 w-4" />
-                    {c.entries}
+                    {c.tickets}
                   </span>
                 )}
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -146,7 +165,7 @@ export default function LoyaltyCustomers(): JSX.Element {
           </div>
         ) : (
           <p className="py-8 text-center text-muted-foreground">
-            Aún no hay clientes con puntos acumulados
+            Aún no hay clientes con saldo acumulado
           </p>
         )}
       </CardContent>
@@ -158,14 +177,34 @@ export default function LoyaltyCustomers(): JSX.Element {
           </DialogHeader>
           {selected && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg border p-4">
-                  <p className="text-xs text-muted-foreground">Puntos</p>
-                  <p className="text-3xl font-bold">{selected.points}</p>
-                  <p className="text-xs text-muted-foreground">
-                    ≈ {formatUSD(selected.points * status.redeem_value_usd)}
-                  </p>
+              {withPoints && selected.level_name && (
+                <div
+                  className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium"
+                  style={{
+                    borderColor: selected.level_color ?? undefined,
+                    color: selected.level_color ?? undefined
+                  }}
+                >
+                  Nivel {selected.level_name}
                 </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                {withPoints && (
+                  <div className="rounded-lg border p-4">
+                    <p className="text-xs text-muted-foreground">Puntos</p>
+                    <p className="text-3xl font-bold">{selected.points}</p>
+                    <p className="text-xs text-muted-foreground">
+                      ≈ {formatUSD(selected.points * status.redeem_value_usd)}
+                    </p>
+                  </div>
+                )}
+                {withTickets && (
+                  <div className="rounded-lg border p-4">
+                    <p className="text-xs text-muted-foreground">Tickets</p>
+                    <p className="text-3xl font-bold">{selected.tickets}</p>
+                    <p className="text-xs text-muted-foreground">acumulados para la rifa</p>
+                  </div>
+                )}
                 {status.raffle_enabled && (
                   <div className="rounded-lg border p-4">
                     <p className="text-xs text-muted-foreground">Participaciones</p>
@@ -175,7 +214,7 @@ export default function LoyaltyCustomers(): JSX.Element {
                 )}
               </div>
 
-              {status.rewards_enabled && rewards.length > 0 && (
+              {withPoints && status.rewards_enabled && rewards.length > 0 && (
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Canjear premio</p>
                   <div className="max-h-40 space-y-1 overflow-y-auto">
@@ -206,22 +245,24 @@ export default function LoyaltyCustomers(): JSX.Element {
                 </div>
               )}
 
-              <div className="flex items-end gap-2">
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Canje manual (puntos)</label>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={redeemPoints}
-                    onChange={(e) => setRedeemPoints(e.target.value)}
-                    className="w-32"
-                    placeholder="0"
-                  />
+              {withPoints && (
+                <div className="flex items-end gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Canje manual (puntos)</label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={redeemPoints}
+                      onChange={(e) => setRedeemPoints(e.target.value)}
+                      className="w-32"
+                      placeholder="0"
+                    />
+                  </div>
+                  <Button variant="outline" onClick={doRedeem}>
+                    Canjear
+                  </Button>
                 </div>
-                <Button variant="outline" onClick={doRedeem}>
-                  Canjear
-                </Button>
-              </div>
+              )}
 
               <div>
                 <p className="mb-2 text-sm font-medium">Movimientos recientes</p>

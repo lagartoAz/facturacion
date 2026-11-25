@@ -14,6 +14,7 @@ import {
 } from './database/recovery'
 import { registerAllHandlers } from './ipc'
 import { syncLoyaltyLicense } from './ipc/loyalty.ipc'
+import { LoyaltyService } from './services/loyalty.service'
 import { captureHandlers } from './server/handler-registry'
 import { startRpcServer } from './server/rpc-server'
 import { registerClientHandlers, tryAutoConnect } from './client/client-proxy'
@@ -217,6 +218,14 @@ app.whenReady().then(() => {
   // Reconcile the loyalty feature flag with its license file, so dropping the
   // complement installer's license into userData turns the add-on on at launch.
   syncLoyaltyLicense(db)
+
+  // Run the monthly loyalty perks (level coupons / monthly raffles). Idempotent
+  // per month, so running it at every launch is safe (there is no scheduler).
+  try {
+    new LoyaltyService(db).processMonthlyBenefits()
+  } catch (err) {
+    console.error('[loyalty] processMonthlyBenefits falló:', err)
+  }
 
   // On the primary (server) build, expose the database to other PCs on the LAN.
   if (getRole() === 'server' && getNetworkConfig().serverEnabled) {

@@ -99,11 +99,14 @@ export class InvoiceService {
         (sum, item) => sum + item.quantity * item.unitPrice,
         0
       )
-      // Apply a single-use discount coupon if one was selected. The discount is
-      // recomputed here (authoritative) from the coupon, not trusted from the UI.
-      const discount = data.couponId
+      // Apply a single-use discount coupon if one was selected plus any automatic
+      // discount the customer's loyalty level grants. Both are recomputed here
+      // (authoritative) rather than trusted from the UI.
+      const couponDiscount = data.couponId
         ? this.loyaltyService.validateCouponDiscount(data.couponId, data.customerId || null, subtotal)
         : 0
+      const levelDiscount = this.loyaltyService.levelDiscountFor(data.customerId || null, subtotal)
+      const discount = Math.min(subtotal, couponDiscount + levelDiscount)
       const total = Math.max(0, subtotal - discount)
 
       // Insert invoice
@@ -187,14 +190,17 @@ export class InvoiceService {
             : data.paymentAmountVes
               ? 'VES'
               : 'USD'
-      this.loyaltyService.earnForInvoice({
+      const earnCtx = {
         customerId: data.customerId || null,
         invoiceId: Number(invoiceId),
         totalUsd: total,
         paymentMethod: data.paymentMethod,
         currency,
         items: data.items.map((i) => ({ productId: i.isCustom ? null : i.productId, quantity: i.quantity }))
-      })
+      }
+      // Points and tickets accrue atomically with the sale (same transaction).
+      this.loyaltyService.earnForInvoice(earnCtx)
+      this.loyaltyService.earnTicketsForInvoice(earnCtx)
 
       return this.getById(Number(invoiceId))!
     })

@@ -9,7 +9,7 @@ import {
   DialogTitle,
   DialogFooter
 } from '@/components/ui/dialog'
-import { useLoyalty } from '@/hooks/useLoyalty'
+import { useLoyalty, ticketsActive } from '@/hooks/useLoyalty'
 import { Ticket, Trophy, Trash2, Play, PartyPopper, MessageCircle, Copy, Save } from 'lucide-react'
 import RaffleRoulette, { type Participant } from '@/components/RaffleRoulette'
 
@@ -25,10 +25,14 @@ interface Raffle {
   winner_name: string | null
   drawn_at: string | null
   created_at: string
+  kind: 'general' | 'level'
+  level_id: number | null
+  period: string | null
 }
 
 export default function LoyaltyRaffle(): JSX.Element {
   const { status, refresh } = useLoyalty()
+  const withTickets = ticketsActive(status.mode)
   const [animation, setAnimation] = useState(status.raffle_animation)
   const [active, setActive] = useState<Raffle | null>(null)
   const [raffles, setRaffles] = useState<Raffle[]>([])
@@ -165,7 +169,23 @@ export default function LoyaltyRaffle(): JSX.Element {
     await load()
   }
 
+  async function drawLevelRaffle(r: Raffle): Promise<void> {
+    if (!confirm(`¿Sortear la rifa "${r.name}" ahora?`)) return
+    try {
+      const winner = (await window.api.drawRaffle(r.id, Math.random())) as Participant | null
+      if (!winner) {
+        alert('No hay participantes en esta rifa')
+        return
+      }
+      await load()
+      openWinnerMessage(winner.name, r.name)
+    } catch (e) {
+      alert((e as Error).message || 'No se pudo sortear')
+    }
+  }
+
   const totalEntries = participants.reduce((s, p) => s + p.entries, 0)
+  const openLevelRaffles = raffles.filter((r) => r.kind === 'level' && r.status === 'open')
   const pastRaffles = raffles.filter((r) => r.status === 'drawn')
 
   return (
@@ -183,12 +203,18 @@ export default function LoyaltyRaffle(): JSX.Element {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-6 text-sm text-muted-foreground">
-              <span>
-                {active.points_per_entry > 0
-                  ? `1 participación por cada ${active.points_per_entry} pts`
-                  : 'Una participación por cliente elegible'}
-              </span>
-              <span>Mínimo {active.min_points} pts para participar</span>
+              {withTickets ? (
+                <span>1 participación por cada ticket acumulado</span>
+              ) : (
+                <>
+                  <span>
+                    {active.points_per_entry > 0
+                      ? `1 participación por cada ${active.points_per_entry} pts`
+                      : 'Una participación por cliente elegible'}
+                  </span>
+                  <span>Mínimo {active.min_points} pts para participar</span>
+                </>
+              )}
               <span>
                 {participants.length} participantes · {totalEntries} participaciones
               </span>
@@ -290,29 +316,70 @@ export default function LoyaltyRaffle(): JSX.Element {
                 className="max-w-sm"
               />
             </div>
-            <div className="flex flex-wrap gap-4">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Puntos por participación</label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={pointsPerEntry}
-                  onChange={(e) => setPointsPerEntry(e.target.value)}
-                  className="w-36"
-                />
+            {withTickets ? (
+              <p className="text-sm text-muted-foreground">
+                Las participaciones se cuentan por los tickets que cada cliente acumuló.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Puntos por participación</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={pointsPerEntry}
+                    onChange={(e) => setPointsPerEntry(e.target.value)}
+                    className="w-36"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Puntos mínimos</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={minPoints}
+                    onChange={(e) => setMinPoints(e.target.value)}
+                    className="w-36"
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Puntos mínimos</label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={minPoints}
-                  onChange={(e) => setMinPoints(e.target.value)}
-                  className="w-36"
-                />
-              </div>
-            </div>
+            )}
             <Button onClick={createRaffle}>Crear rifa</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Monthly level raffles (auto-created from level benefits) */}
+      {openLevelRaffles.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Ticket className="h-5 w-5" />
+              Rifas mensuales por nivel
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Se crean solas cada mes para los niveles con ese beneficio. Cada miembro recibe 1
+              ticket que caduca al sortearla.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y rounded-lg border">
+              {openLevelRaffles.map((r) => (
+                <div key={r.id} className="flex items-center gap-3 p-3 text-sm">
+                  <div className="flex-1">
+                    <p className="font-medium">{r.name}</p>
+                    <p className="text-xs text-muted-foreground">Período {r.period}</p>
+                  </div>
+                  <Button size="sm" onClick={() => drawLevelRaffle(r)}>
+                    <Play className="mr-1 h-4 w-4" />
+                    Sortear
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={() => removeRaffle(r.id)}>
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

@@ -3,7 +3,9 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 export interface LoyaltyStatus {
   enabled: boolean
   licensed: boolean
-  // Earning rules
+  // Program mode
+  mode: 'points' | 'tickets' | 'both'
+  // Earning rules — points
   earn_money: boolean
   points_per_usd: number
   earn_product: boolean
@@ -11,6 +13,21 @@ export interface LoyaltyStatus {
   points_per_invoice: number
   currency_filter: string
   exclude_credit: boolean
+  // Per-invoice caps
+  cap_points_enabled: boolean
+  max_points_per_invoice: number
+  cap_tickets_enabled: boolean
+  max_tickets_per_invoice: number
+  // Accumulation cap
+  max_tickets_accumulable: number
+  // Earning rules — tickets
+  tickets_earn_invoice: boolean
+  tickets_per_invoice: number
+  tickets_earn_money: boolean
+  usd_per_ticket: number
+  // Levels
+  levels_enabled: boolean
+  level_window_months: number
   // Rewards
   rewards_enabled: boolean
   redeem_value_usd: number
@@ -24,6 +41,10 @@ export interface LoyaltyStatus {
   winner_template: string
 }
 
+// Helpers so UI can branch on which currencies the current mode activates.
+export const pointsActive = (m: string): boolean => m === 'points' || m === 'both'
+export const ticketsActive = (m: string): boolean => m === 'tickets' || m === 'both'
+
 interface LoyaltyContextValue {
   status: LoyaltyStatus
   loading: boolean
@@ -33,6 +54,7 @@ interface LoyaltyContextValue {
 const DEFAULT: LoyaltyStatus = {
   enabled: false,
   licensed: false,
+  mode: 'points',
   earn_money: true,
   points_per_usd: 1,
   earn_product: false,
@@ -40,6 +62,17 @@ const DEFAULT: LoyaltyStatus = {
   points_per_invoice: 0,
   currency_filter: '',
   exclude_credit: true,
+  cap_points_enabled: true,
+  max_points_per_invoice: 100,
+  cap_tickets_enabled: true,
+  max_tickets_per_invoice: 3,
+  max_tickets_accumulable: 5,
+  tickets_earn_invoice: true,
+  tickets_per_invoice: 1,
+  tickets_earn_money: false,
+  usd_per_ticket: 0,
+  levels_enabled: true,
+  level_window_months: 12,
   rewards_enabled: true,
   redeem_value_usd: 0.01,
   raffle_enabled: false,

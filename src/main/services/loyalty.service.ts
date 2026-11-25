@@ -3,7 +3,9 @@ import type { DailySale, HourlySale, MonthlySale, SalesSummary, TopProduct } fro
 
 export interface LoyaltyConfig {
   enabled: boolean
-  // Earning rules (additive)
+  // Program mode: which currencies are active.
+  mode: 'points' | 'tickets' | 'both'
+  // Earning rules (additive) — points
   earn_money: boolean
   points_per_usd: number
   earn_product: boolean
@@ -11,6 +13,21 @@ export interface LoyaltyConfig {
   points_per_invoice: number
   currency_filter: string // '' | 'USD' | 'VES' | 'COP'
   exclude_credit: boolean
+  // Per-invoice caps
+  cap_points_enabled: boolean
+  max_points_per_invoice: number
+  cap_tickets_enabled: boolean
+  max_tickets_per_invoice: number
+  // Accumulation cap (tickets a customer may hold in the current raffle; 0 = unlimited)
+  max_tickets_accumulable: number
+  // Earning rules — tickets (independent from points)
+  tickets_earn_invoice: boolean
+  tickets_per_invoice: number
+  tickets_earn_money: boolean
+  usd_per_ticket: number
+  // Levels
+  levels_enabled: boolean
+  level_window_months: number
   // Rewards
   rewards_enabled: boolean
   redeem_value_usd: number
@@ -20,8 +37,39 @@ export interface LoyaltyConfig {
   raffle_min_points: number
   exclude_red_debtors: boolean
   raffle_animation: string // 'ruleta' | 'minimal'
-  tickets_enabled: boolean
+  tickets_enabled: boolean // physical printable tickets
   winner_template: string
+}
+
+// Whether points / tickets are active under the current mode.
+export function pointsActive(mode: string): boolean {
+  return mode === 'points' || mode === 'both'
+}
+export function ticketsActive(mode: string): boolean {
+  return mode === 'tickets' || mode === 'both'
+}
+
+export interface LoyaltyLevel {
+  id: number
+  name: string
+  min_points: number
+  sort_order: number
+  color: string | null
+}
+
+export interface LevelBenefit {
+  id: number
+  level_id: number
+  kind: 'discount_fixed' | 'monthly_coupon' | 'monthly_raffle' | 'custom'
+  value: number
+  unit: string | null // 'usd' | 'pct'
+  note: string | null
+}
+
+export interface CustomerLevel {
+  level: LoyaltyLevel | null
+  earned_window: number
+  benefits: LevelBenefit[]
 }
 
 export interface Coupon {
@@ -60,15 +108,19 @@ export interface CustomerPoints {
   customer_id: number
   name: string
   points: number
+  tickets: number
   entries: number
+  level_name: string | null
+  level_color: string | null
 }
 
 export interface Reward {
   id: number
   name: string
-  kind: 'discount_usd' | 'discount_pct' | 'custom'
+  kind: 'discount_usd' | 'discount_pct' | 'ticket' | 'custom'
   cost_points: number
   value: number
+  tickets: number
   active: number
 }
 
@@ -82,6 +134,9 @@ export interface Raffle {
   winner_name: string | null
   drawn_at: string | null
   created_at: string
+  kind: 'general' | 'level'
+  level_id: number | null
+  period: string | null
 }
 
 export interface RaffleParticipant {
@@ -122,8 +177,10 @@ export class LoyaltyService {
   }
 
   getConfig(): LoyaltyConfig {
+    const mode = this.get('loyalty_mode', 'points')
     return {
       enabled: this.get('loyalty_enabled', '0') === '1',
+      mode: (mode === 'tickets' || mode === 'both' ? mode : 'points') as LoyaltyConfig['mode'],
       earn_money: this.get('loyalty_earn_money', '1') === '1',
       points_per_usd: parseFloat(this.get('loyalty_points_per_usd', '1')) || 0,
       earn_product: this.get('loyalty_earn_product', '0') === '1',
@@ -131,6 +188,17 @@ export class LoyaltyService {
       points_per_invoice: parseFloat(this.get('loyalty_points_per_invoice', '0')) || 0,
       currency_filter: this.get('loyalty_currency_filter', ''),
       exclude_credit: this.get('loyalty_exclude_credit', '1') === '1',
+      cap_points_enabled: this.get('loyalty_cap_points_enabled', '1') === '1',
+      max_points_per_invoice: parseFloat(this.get('loyalty_max_points_per_invoice', '100')) || 0,
+      cap_tickets_enabled: this.get('loyalty_cap_tickets_enabled', '1') === '1',
+      max_tickets_per_invoice: parseFloat(this.get('loyalty_max_tickets_per_invoice', '3')) || 0,
+      max_tickets_accumulable: parseFloat(this.get('loyalty_max_tickets_accumulable', '5')) || 0,
+      tickets_earn_invoice: this.get('loyalty_tickets_earn_invoice', '1') === '1',
+      tickets_per_invoice: parseFloat(this.get('loyalty_tickets_per_invoice', '1')) || 0,
+      tickets_earn_money: this.get('loyalty_tickets_earn_money', '0') === '1',
+      usd_per_ticket: parseFloat(this.get('loyalty_usd_per_ticket', '0')) || 0,
+      levels_enabled: this.get('loyalty_levels_enabled', '1') === '1',
+      level_window_months: parseInt(this.get('loyalty_level_window_months', '12'), 10) || 0,
       rewards_enabled: this.get('loyalty_rewards_enabled', '1') === '1',
       redeem_value_usd: parseFloat(this.get('loyalty_redeem_value_usd', '0.01')) || 0,
       raffle_enabled: this.get('loyalty_raffle_enabled', '0') === '1',
@@ -146,6 +214,29 @@ export class LoyaltyService {
   setConfig(cfg: Partial<LoyaltyConfig>): LoyaltyConfig {
     const bool = (b: boolean): string => (b ? '1' : '0')
     const map: Record<string, string | undefined> = {
+      loyalty_mode: cfg.mode === undefined ? undefined : cfg.mode,
+      loyalty_cap_points_enabled:
+        cfg.cap_points_enabled === undefined ? undefined : bool(cfg.cap_points_enabled),
+      loyalty_max_points_per_invoice:
+        cfg.max_points_per_invoice === undefined ? undefined : String(cfg.max_points_per_invoice),
+      loyalty_cap_tickets_enabled:
+        cfg.cap_tickets_enabled === undefined ? undefined : bool(cfg.cap_tickets_enabled),
+      loyalty_max_tickets_per_invoice:
+        cfg.max_tickets_per_invoice === undefined ? undefined : String(cfg.max_tickets_per_invoice),
+      loyalty_max_tickets_accumulable:
+        cfg.max_tickets_accumulable === undefined ? undefined : String(cfg.max_tickets_accumulable),
+      loyalty_tickets_earn_invoice:
+        cfg.tickets_earn_invoice === undefined ? undefined : bool(cfg.tickets_earn_invoice),
+      loyalty_tickets_per_invoice:
+        cfg.tickets_per_invoice === undefined ? undefined : String(cfg.tickets_per_invoice),
+      loyalty_tickets_earn_money:
+        cfg.tickets_earn_money === undefined ? undefined : bool(cfg.tickets_earn_money),
+      loyalty_usd_per_ticket:
+        cfg.usd_per_ticket === undefined ? undefined : String(cfg.usd_per_ticket),
+      loyalty_levels_enabled:
+        cfg.levels_enabled === undefined ? undefined : bool(cfg.levels_enabled),
+      loyalty_level_window_months:
+        cfg.level_window_months === undefined ? undefined : String(cfg.level_window_months),
       loyalty_earn_money: cfg.earn_money === undefined ? undefined : bool(cfg.earn_money),
       loyalty_points_per_usd: cfg.points_per_usd === undefined ? undefined : String(cfg.points_per_usd),
       loyalty_earn_product: cfg.earn_product === undefined ? undefined : bool(cfg.earn_product),
@@ -251,14 +342,30 @@ export class LoyaltyService {
     const cfg = this.getConfig()
     if (cfg.exclude_red_debtors && this.redDebtorIds().has(inv.customer_id)) return empty
 
-    const row = this.db
-      .prepare(
-        "SELECT COALESCE(SUM(points), 0) as pts FROM loyalty_ledger WHERE invoice_id = ? AND type = 'earn'"
-      )
-      .get(invoiceId) as { pts: number }
-    const points = row.pts
-    const count =
-      raffle.points_per_entry > 0 ? Math.floor(points / raffle.points_per_entry) : points > 0 ? 1 : 0
+    let count: number
+    if (ticketsActive(cfg.mode)) {
+      // With a ticket currency, physical tickets mirror the tickets the sale earned.
+      const row = this.db
+        .prepare(
+          "SELECT COALESCE(SUM(tickets), 0) as t FROM loyalty_tickets_ledger WHERE invoice_id = ? AND type = 'earn'"
+        )
+        .get(invoiceId) as { t: number }
+      count = row.t
+    } else {
+      // Points-only mode: derive tickets from the points the sale earned.
+      const row = this.db
+        .prepare(
+          "SELECT COALESCE(SUM(points), 0) as pts FROM loyalty_ledger WHERE invoice_id = ? AND type = 'earn'"
+        )
+        .get(invoiceId) as { pts: number }
+      const points = row.pts
+      count =
+        raffle.points_per_entry > 0
+          ? Math.floor(points / raffle.points_per_entry)
+          : points > 0
+            ? 1
+            : 0
+    }
     const codes = Array.from({ length: count }, (_, i) => `${inv.invoice_number}-${i + 1}`)
     return {
       invoiceNumber: inv.invoice_number,
@@ -361,34 +468,74 @@ export class LoyaltyService {
       .all(from, to, limit) as TopProduct[]
   }
 
-  // Every customer that has points, with their entries in the active raffle.
+  // Every customer that holds points or tickets, with their points/ticket
+  // balance, raffle entries and current level. Works in every mode.
   allBalances(): CustomerPoints[] {
-    const rows = this.db
+    const cfg = this.getConfig()
+    // Points balance per customer.
+    const pointRows = this.db
       .prepare(
         `SELECT l.customer_id as customer_id, c.name as name,
                 COALESCE(SUM(l.points), 0) as points
-         FROM loyalty_ledger l
-         JOIN customers c ON c.id = l.customer_id
-         GROUP BY l.customer_id
-         HAVING points > 0
-         ORDER BY points DESC`
+         FROM loyalty_ledger l JOIN customers c ON c.id = l.customer_id
+         GROUP BY l.customer_id HAVING points > 0`
       )
       .all() as { customer_id: number; name: string; points: number }[]
+    // General ticket pool balance per customer.
+    const ticketRows = this.db
+      .prepare(
+        `SELECT t.customer_id as customer_id, c.name as name,
+                COALESCE(SUM(t.tickets), 0) as tickets
+         FROM loyalty_tickets_ledger t JOIN customers c ON c.id = t.customer_id
+         WHERE t.raffle_id IS NULL
+         GROUP BY t.customer_id HAVING tickets > 0`
+      )
+      .all() as { customer_id: number; name: string; tickets: number }[]
+
+    const map = new Map<number, { customer_id: number; name: string; points: number; tickets: number }>()
+    for (const r of pointRows)
+      map.set(r.customer_id, { customer_id: r.customer_id, name: r.name, points: r.points, tickets: 0 })
+    for (const r of ticketRows) {
+      const cur = map.get(r.customer_id)
+      if (cur) cur.tickets = r.tickets
+      else
+        map.set(r.customer_id, {
+          customer_id: r.customer_id,
+          name: r.name,
+          points: 0,
+          tickets: r.tickets
+        })
+    }
+
     const raffle = this.getActiveRaffle()
-    const blocked = raffle && this.getConfig().exclude_red_debtors ? this.redDebtorIds() : null
-    return rows.map((r) => ({
-      ...r,
-      entries:
-        raffle && !(blocked && blocked.has(r.customer_id))
-          ? this.entriesFor(r.points, raffle.points_per_entry, raffle.min_points)
-          : 0
-    }))
+    const blocked = raffle && cfg.exclude_red_debtors ? this.redDebtorIds() : null
+    const out: CustomerPoints[] = []
+    for (const r of map.values()) {
+      const lvl = cfg.levels_enabled && pointsActive(cfg.mode) ? this.customerLevel(r.customer_id).level : null
+      let entries = 0
+      if (raffle && !(blocked && blocked.has(r.customer_id))) {
+        entries = ticketsActive(cfg.mode)
+          ? r.tickets
+          : this.entriesFor(r.points, raffle.points_per_entry, raffle.min_points)
+      }
+      out.push({
+        customer_id: r.customer_id,
+        name: r.name,
+        points: r.points,
+        tickets: r.tickets,
+        entries,
+        level_name: lvl?.name ?? null,
+        level_color: lvl?.color ?? null
+      })
+    }
+    return out.sort((a, b) => b.points - a.points || b.tickets - a.tickets)
   }
 
-  // Points + entries keyed by customer id, for the customers list.
-  summaryByCustomer(): Record<number, { points: number; entries: number }> {
-    const out: Record<number, { points: number; entries: number }> = {}
-    for (const b of this.allBalances()) out[b.customer_id] = { points: b.points, entries: b.entries }
+  // Points/tickets/entries keyed by customer id, for the customers list.
+  summaryByCustomer(): Record<number, { points: number; tickets: number; entries: number }> {
+    const out: Record<number, { points: number; tickets: number; entries: number }> = {}
+    for (const b of this.allBalances())
+      out[b.customer_id] = { points: b.points, tickets: b.tickets, entries: b.entries }
     return out
   }
 
@@ -443,6 +590,13 @@ export class LoyaltyService {
       coupon = this.db
         .prepare('SELECT * FROM loyalty_coupons WHERE id = ?')
         .get(info.lastInsertRowid) as Coupon
+    } else if (reward.kind === 'ticket' && reward.tickets > 0) {
+      // A "ticket" reward turns points into raffle participations (general pool).
+      this.db
+        .prepare(
+          "INSERT INTO loyalty_tickets_ledger (customer_id, invoice_id, raffle_id, tickets, type, note) VALUES (?, NULL, NULL, ?, 'redeem', ?)"
+        )
+        .run(customerId, Math.floor(reward.tickets), `Premio: ${reward.name}`)
     }
     return { balance, reward, coupon }
   }
@@ -537,7 +691,7 @@ export class LoyaltyService {
   computeEarnedPoints(ctx: EarnContext): number {
     if (!ctx.customerId) return 0
     const cfg = this.getConfig()
-    if (!cfg.enabled) return 0
+    if (!cfg.enabled || !pointsActive(cfg.mode)) return 0
     if (cfg.exclude_credit && ctx.paymentMethod === 'credit') return 0
     if (cfg.currency_filter && ctx.currency !== cfg.currency_filter) return 0
 
@@ -556,7 +710,172 @@ export class LoyaltyService {
         }
       }
     }
+    // Per-invoice cap on points.
+    if (cfg.cap_points_enabled && cfg.max_points_per_invoice > 0) {
+      points = Math.min(points, Math.floor(cfg.max_points_per_invoice))
+    }
     return points
+  }
+
+  // ---- Tickets (raffle currency, independent from points) --------------------
+
+  // A customer's ticket balance. Tickets tied to a drawn raffle are expired, so
+  // the live balance is SUM over rows (expiry rows are negative).
+  ticketBalance(customerId: number): number {
+    const row = this.db
+      .prepare(
+        'SELECT COALESCE(SUM(tickets), 0) as t FROM loyalty_tickets_ledger WHERE customer_id = ?'
+      )
+      .get(customerId) as { t: number }
+    return row.t
+  }
+
+  // Tickets a sale earns under the ticket-earning rules, honouring the shared
+  // credit/currency filters, the per-invoice cap and the accumulation cap.
+  computeEarnedTickets(ctx: EarnContext): number {
+    if (!ctx.customerId) return 0
+    const cfg = this.getConfig()
+    if (!cfg.enabled || !ticketsActive(cfg.mode)) return 0
+    if (cfg.exclude_credit && ctx.paymentMethod === 'credit') return 0
+    if (cfg.currency_filter && ctx.currency !== cfg.currency_filter) return 0
+
+    let tickets = 0
+    if (cfg.tickets_earn_invoice && cfg.tickets_per_invoice > 0) {
+      tickets += Math.floor(cfg.tickets_per_invoice)
+    }
+    if (cfg.tickets_earn_money && cfg.usd_per_ticket > 0) {
+      tickets += Math.floor(ctx.totalUsd / cfg.usd_per_ticket)
+    }
+    // Per-invoice cap.
+    if (cfg.cap_tickets_enabled && cfg.max_tickets_per_invoice > 0) {
+      tickets = Math.min(tickets, Math.floor(cfg.max_tickets_per_invoice))
+    }
+    // Accumulation cap: never let the running balance exceed the limit.
+    if (cfg.max_tickets_accumulable > 0) {
+      const room = Math.floor(cfg.max_tickets_accumulable) - this.ticketBalance(ctx.customerId)
+      tickets = Math.max(0, Math.min(tickets, room))
+    }
+    return tickets
+  }
+
+  // Accrue tickets for a completed sale. Called inside the invoice transaction.
+  earnTicketsForInvoice(ctx: EarnContext): void {
+    const tickets = this.computeEarnedTickets(ctx)
+    if (tickets <= 0) return
+    this.db
+      .prepare(
+        "INSERT INTO loyalty_tickets_ledger (customer_id, invoice_id, tickets, type) VALUES (?, ?, ?, 'earn')"
+      )
+      .run(ctx.customerId, ctx.invoiceId, tickets)
+  }
+
+  // ---- Levels ----------------------------------------------------------------
+
+  listLevels(): LoyaltyLevel[] {
+    return this.db
+      .prepare('SELECT * FROM loyalty_levels ORDER BY sort_order ASC, min_points ASC')
+      .all() as LoyaltyLevel[]
+  }
+
+  createLevel(l: Omit<LoyaltyLevel, 'id'>): LoyaltyLevel {
+    const info = this.db
+      .prepare(
+        'INSERT INTO loyalty_levels (name, min_points, sort_order, color) VALUES (?, ?, ?, ?)'
+      )
+      .run(l.name, Math.round(l.min_points), Math.round(l.sort_order), l.color ?? null)
+    return this.db
+      .prepare('SELECT * FROM loyalty_levels WHERE id = ?')
+      .get(info.lastInsertRowid) as LoyaltyLevel
+  }
+
+  updateLevel(id: number, l: Partial<LoyaltyLevel>): void {
+    const cur = this.db.prepare('SELECT * FROM loyalty_levels WHERE id = ?').get(id) as
+      | LoyaltyLevel
+      | undefined
+    if (!cur) throw new Error('Nivel no encontrado')
+    this.db
+      .prepare(
+        'UPDATE loyalty_levels SET name = ?, min_points = ?, sort_order = ?, color = ? WHERE id = ?'
+      )
+      .run(
+        l.name ?? cur.name,
+        Math.round(l.min_points ?? cur.min_points),
+        Math.round(l.sort_order ?? cur.sort_order),
+        l.color === undefined ? cur.color : l.color,
+        id
+      )
+  }
+
+  deleteLevel(id: number): void {
+    this.db.prepare('DELETE FROM loyalty_levels WHERE id = ?').run(id)
+  }
+
+  // Points EARNED by a customer within the configured rolling window — the
+  // metric levels are based on (redeeming points never demotes a customer).
+  earnedPointsInWindow(customerId: number): number {
+    const months = this.getConfig().level_window_months
+    const where =
+      months > 0
+        ? `AND created_at >= datetime('now', 'localtime', '-${Math.round(months)} months')`
+        : ''
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(points), 0) as pts FROM loyalty_ledger
+         WHERE customer_id = ? AND type = 'earn' ${where}`
+      )
+      .get(customerId) as { pts: number }
+    return row.pts
+  }
+
+  levelBenefits(levelId: number): LevelBenefit[] {
+    return this.db
+      .prepare('SELECT * FROM loyalty_level_benefits WHERE level_id = ? ORDER BY id ASC')
+      .all(levelId) as LevelBenefit[]
+  }
+
+  // Replace the whole benefit set of a level (simplest edit model for the UI).
+  setLevelBenefits(levelId: number, benefits: Omit<LevelBenefit, 'id' | 'level_id'>[]): void {
+    const tx = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM loyalty_level_benefits WHERE level_id = ?').run(levelId)
+      const ins = this.db.prepare(
+        'INSERT INTO loyalty_level_benefits (level_id, kind, value, unit, note) VALUES (?, ?, ?, ?, ?)'
+      )
+      for (const b of benefits) {
+        ins.run(levelId, b.kind, b.value ?? 0, b.unit ?? null, b.note ?? null)
+      }
+    })
+    tx()
+  }
+
+  // The level a customer currently sits at, with its benefits.
+  customerLevel(customerId: number): CustomerLevel {
+    const earned = this.earnedPointsInWindow(customerId)
+    const levels = this.listLevels()
+    let level: LoyaltyLevel | null = null
+    for (const l of levels) {
+      if (earned >= l.min_points) level = l
+    }
+    return {
+      level,
+      earned_window: earned,
+      benefits: level ? this.levelBenefits(level.id) : []
+    }
+  }
+
+  // Automatic USD discount a customer's level grants on a sale (sum of its
+  // 'discount_fixed' benefits). Applied on top of any coupon in the POS.
+  levelDiscountFor(customerId: number | null, subtotal: number): number {
+    if (!customerId || subtotal <= 0) return 0
+    const cfg = this.getConfig()
+    if (!cfg.enabled || !cfg.levels_enabled || !pointsActive(cfg.mode)) return 0
+    const { benefits } = this.customerLevel(customerId)
+    let d = 0
+    for (const b of benefits) {
+      if (b.kind !== 'discount_fixed') continue
+      d += b.unit === 'pct' ? (subtotal * b.value) / 100 : b.value
+    }
+    d = Math.round(d * 100) / 100
+    return Math.min(Math.max(d, 0), subtotal)
   }
 
   // Tickets/cupos a points amount yields for the active raffle (ignores the
@@ -568,9 +887,15 @@ export class LoyaltyService {
   }
 
   // Preview of what a sale would grant, for the POS (points + raffle tickets).
+  // Tickets come from their own rules when the ticket currency is active;
+  // otherwise they are derived from the points the sale earns (legacy).
   previewSale(ctx: EarnContext): { points: number; tickets: number } {
+    const cfg = this.getConfig()
     const points = this.computeEarnedPoints(ctx)
-    return { points, tickets: this.ticketsForPoints(points) }
+    const tickets = ticketsActive(cfg.mode)
+      ? this.computeEarnedTickets(ctx)
+      : this.ticketsForPoints(points)
+    return { points, tickets }
   }
 
   // Points + tickets a finalized invoice actually granted (for the receipt /
@@ -608,9 +933,16 @@ export class LoyaltyService {
   createReward(r: Omit<Reward, 'id' | 'active'> & { active?: boolean }): Reward {
     const info = this.db
       .prepare(
-        'INSERT INTO loyalty_rewards (name, kind, cost_points, value, active) VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO loyalty_rewards (name, kind, cost_points, value, tickets, active) VALUES (?, ?, ?, ?, ?, ?)'
       )
-      .run(r.name, r.kind, Math.round(r.cost_points), r.value ?? 0, r.active === false ? 0 : 1)
+      .run(
+        r.name,
+        r.kind,
+        Math.round(r.cost_points),
+        r.value ?? 0,
+        Math.round(r.tickets ?? 0),
+        r.active === false ? 0 : 1
+      )
     return this.db
       .prepare('SELECT * FROM loyalty_rewards WHERE id = ?')
       .get(info.lastInsertRowid) as Reward
@@ -623,13 +955,14 @@ export class LoyaltyService {
     if (!cur) throw new Error('Premio no encontrado')
     this.db
       .prepare(
-        'UPDATE loyalty_rewards SET name = ?, kind = ?, cost_points = ?, value = ?, active = ? WHERE id = ?'
+        'UPDATE loyalty_rewards SET name = ?, kind = ?, cost_points = ?, value = ?, tickets = ?, active = ? WHERE id = ?'
       )
       .run(
         r.name ?? cur.name,
         r.kind ?? cur.kind,
         Math.round(r.cost_points ?? cur.cost_points),
         r.value ?? cur.value,
+        Math.round(r.tickets ?? cur.tickets),
         r.active === undefined ? cur.active : r.active ? 1 : 0,
         id
       )
@@ -641,12 +974,15 @@ export class LoyaltyService {
 
   // ---- Raffle ----------------------------------------------------------------
 
+  // The open GENERAL raffle (level raffles live alongside it, one per level/month).
   getActiveRaffle(): Raffle | null {
     const cfg = this.getConfig()
     if (!cfg.raffle_enabled) return null
     return (
       (this.db
-        .prepare("SELECT * FROM loyalty_raffles WHERE status = 'open' ORDER BY id DESC LIMIT 1")
+        .prepare(
+          "SELECT * FROM loyalty_raffles WHERE status = 'open' AND kind = 'general' ORDER BY id DESC LIMIT 1"
+        )
         .get() as Raffle | undefined) ?? null
     )
   }
@@ -658,11 +994,13 @@ export class LoyaltyService {
   }
 
   createRaffle(name: string, pointsPerEntry: number, minPoints: number): Raffle {
-    const open = this.db.prepare("SELECT id FROM loyalty_raffles WHERE status = 'open'").get()
+    const open = this.db
+      .prepare("SELECT id FROM loyalty_raffles WHERE status = 'open' AND kind = 'general'")
+      .get()
     if (open) throw new Error('Ya hay una rifa abierta. Ciérrala antes de crear otra.')
     const info = this.db
       .prepare(
-        'INSERT INTO loyalty_raffles (name, points_per_entry, min_points) VALUES (?, ?, ?)'
+        "INSERT INTO loyalty_raffles (name, points_per_entry, min_points, kind) VALUES (?, ?, ?, 'general')"
       )
       .run(name, Math.round(pointsPerEntry), Math.round(minPoints))
     return this.db
@@ -675,12 +1013,44 @@ export class LoyaltyService {
   }
 
   // Current participants of a raffle, one row per customer with their entry
-  // count (a customer can hold several entries).
+  // count. A customer can hold several entries (several tickets).
   raffleParticipants(raffleId: number): RaffleParticipant[] {
     const raffle = this.db
       .prepare('SELECT * FROM loyalty_raffles WHERE id = ?')
       .get(raffleId) as Raffle | undefined
     if (!raffle) return []
+    const cfg = this.getConfig()
+    const blocked = cfg.exclude_red_debtors ? this.redDebtorIds() : null
+
+    // Ticket-based raffles: entries = the customer's tickets in this pool.
+    //  - level raffle  → monthly tickets scoped to this raffle (raffle_id = id)
+    //  - general raffle → the general pool (raffle_id IS NULL)
+    if (raffle.kind === 'level' || ticketsActive(cfg.mode)) {
+      const scope = raffle.kind === 'level' ? 't.raffle_id = ?' : 't.raffle_id IS NULL'
+      const args = raffle.kind === 'level' ? [raffleId] : []
+      const rows = this.db
+        .prepare(
+          `SELECT t.customer_id as customer_id, c.name as name,
+                  COALESCE(SUM(t.tickets), 0) as entries
+           FROM loyalty_tickets_ledger t
+           JOIN customers c ON c.id = t.customer_id
+           WHERE ${scope}
+           GROUP BY t.customer_id
+           HAVING entries > 0`
+        )
+        .all(...args) as { customer_id: number; name: string; entries: number }[]
+      return rows
+        .map((r) => ({
+          customer_id: r.customer_id,
+          name: r.name,
+          points: r.entries,
+          entries: blocked && blocked.has(r.customer_id) ? 0 : r.entries
+        }))
+        .filter((r) => r.entries > 0)
+        .sort((a, b) => b.entries - a.entries)
+    }
+
+    // Points-only mode: entries are derived from the customer's points balance.
     const rows = this.db
       .prepare(
         `SELECT l.customer_id as customer_id, c.name as name,
@@ -691,7 +1061,6 @@ export class LoyaltyService {
          HAVING points > 0`
       )
       .all() as { customer_id: number; name: string; points: number }[]
-    const blocked = this.getConfig().exclude_red_debtors ? this.redDebtorIds() : null
     return rows
       .map((r) => ({
         ...r,
@@ -702,6 +1071,30 @@ export class LoyaltyService {
       }))
       .filter((r) => r.entries > 0)
       .sort((a, b) => b.entries - a.entries)
+  }
+
+  // Expire the tickets that fed a drawn raffle, so the next one starts clean.
+  // General raffle → the general pool (raffle_id IS NULL); level raffle → its
+  // own monthly tickets (raffle_id = id). Points-only raffles expire nothing.
+  private expireRaffleTickets(raffle: Raffle): void {
+    const cfg = this.getConfig()
+    if (raffle.kind !== 'level' && !ticketsActive(cfg.mode)) return
+    const scope = raffle.kind === 'level' ? 'raffle_id = ?' : 'raffle_id IS NULL'
+    const args = raffle.kind === 'level' ? [raffle.id] : []
+    const balances = this.db
+      .prepare(
+        `SELECT customer_id, COALESCE(SUM(tickets), 0) as bal
+         FROM loyalty_tickets_ledger WHERE ${scope}
+         GROUP BY customer_id HAVING bal > 0`
+      )
+      .all(...args) as { customer_id: number; bal: number }[]
+    const ins = this.db.prepare(
+      "INSERT INTO loyalty_tickets_ledger (customer_id, invoice_id, raffle_id, tickets, type, note) VALUES (?, NULL, ?, ?, 'expire', ?)"
+    )
+    const raffleRef = raffle.kind === 'level' ? raffle.id : null
+    for (const b of balances) {
+      ins.run(b.customer_id, raffleRef, -b.bal, `Rifa: ${raffle.name}`)
+    }
   }
 
   // Weighted random draw. The winner is picked here (authoritative) so the
@@ -727,11 +1120,104 @@ export class LoyaltyService {
         break
       }
     }
-    this.db
-      .prepare(
-        "UPDATE loyalty_raffles SET status = 'drawn', winner_customer_id = ?, winner_name = ?, drawn_at = datetime('now', 'localtime') WHERE id = ?"
-      )
-      .run(winner.customer_id, winner.name, raffleId)
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(
+          "UPDATE loyalty_raffles SET status = 'drawn', winner_customer_id = ?, winner_name = ?, drawn_at = datetime('now', 'localtime') WHERE id = ?"
+        )
+        .run(winner.customer_id, winner.name, raffleId)
+      this.expireRaffleTickets(raffle)
+    })
+    tx()
     return winner
+  }
+
+  // ---- Monthly level benefits (idempotent per YYYY-MM) -----------------------
+
+  // Members currently sitting at a given level.
+  private membersOfLevel(levelId: number): { customer_id: number }[] {
+    const levels = this.listLevels()
+    const level = levels.find((l) => l.id === levelId)
+    if (!level) return []
+    // A customer belongs to this level when it's the highest level their
+    // points-in-window reach. Compute per customer that has earned points.
+    const customers = this.db
+      .prepare(
+        `SELECT DISTINCT customer_id FROM loyalty_ledger WHERE type = 'earn'`
+      )
+      .all() as { customer_id: number }[]
+    return customers.filter((c) => this.customerLevel(c.customer_id).level?.id === levelId)
+  }
+
+  // Runs the monthly perks: ensures each level's monthly raffle exists and its
+  // members hold a monthly ticket; issues monthly coupons. Safe to call often —
+  // every grant is deduplicated by period (YYYY-MM).
+  processMonthlyBenefits(period?: string): void {
+    const cfg = this.getConfig()
+    if (!cfg.enabled || !pointsActive(cfg.mode) || !cfg.levels_enabled) return
+    const ym =
+      period ??
+      (this.db.prepare("SELECT strftime('%Y-%m', 'now', 'localtime') as p").get() as { p: string }).p
+
+    const tx = this.db.transaction(() => {
+      for (const level of this.listLevels()) {
+        const benefits = this.levelBenefits(level.id)
+        const hasRaffle = benefits.some((b) => b.kind === 'monthly_raffle')
+        const monthlyCoupon = benefits.find((b) => b.kind === 'monthly_coupon')
+
+        if (hasRaffle) {
+          let raffle = this.db
+            .prepare(
+              "SELECT * FROM loyalty_raffles WHERE kind = 'level' AND level_id = ? AND period = ? LIMIT 1"
+            )
+            .get(level.id, ym) as Raffle | undefined
+          if (!raffle) {
+            const info = this.db
+              .prepare(
+                "INSERT INTO loyalty_raffles (name, points_per_entry, min_points, kind, level_id, period) VALUES (?, 0, 0, 'level', ?, ?)"
+              )
+              .run(`Rifa ${level.name} ${ym}`, level.id, ym)
+            raffle = this.db
+              .prepare('SELECT * FROM loyalty_raffles WHERE id = ?')
+              .get(info.lastInsertRowid) as Raffle
+          }
+          if (raffle.status === 'open') {
+            for (const m of this.membersOfLevel(level.id)) {
+              const already = this.db
+                .prepare(
+                  "SELECT 1 FROM loyalty_tickets_ledger WHERE customer_id = ? AND raffle_id = ? AND type = 'monthly' LIMIT 1"
+                )
+                .get(m.customer_id, raffle.id)
+              if (!already) {
+                this.db
+                  .prepare(
+                    "INSERT INTO loyalty_tickets_ledger (customer_id, invoice_id, raffle_id, tickets, type, note) VALUES (?, NULL, ?, 1, 'monthly', ?)"
+                  )
+                  .run(m.customer_id, raffle.id, `Ticket mensual ${level.name} ${ym}`)
+              }
+            }
+          }
+        }
+
+        if (monthlyCoupon) {
+          const kind = monthlyCoupon.unit === 'pct' ? 'discount_pct' : 'discount_usd'
+          for (const m of this.membersOfLevel(level.id)) {
+            const already = this.db
+              .prepare(
+                "SELECT 1 FROM loyalty_coupons WHERE customer_id = ? AND source = 'level_monthly' AND period = ? LIMIT 1"
+              )
+              .get(m.customer_id, ym)
+            if (!already) {
+              this.db
+                .prepare(
+                  "INSERT INTO loyalty_coupons (customer_id, reward_id, name, kind, value, cost_points, status, source, period) VALUES (?, NULL, ?, ?, ?, 0, 'active', 'level_monthly', ?)"
+                )
+                .run(m.customer_id, `Cupón ${level.name} ${ym}`, kind, monthlyCoupon.value, ym)
+            }
+          }
+        }
+      }
+    })
+    tx()
   }
 }

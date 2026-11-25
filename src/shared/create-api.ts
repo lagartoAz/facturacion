@@ -106,6 +106,20 @@ export function createApi(invoke: Invoke) {
     activateLoyalty: (key: string) => invoke('loyalty:activate', key),
     deactivateLoyalty: () => invoke('loyalty:deactivate'),
     setLoyaltyConfig: (cfg: Record<string, unknown>) => invoke('loyalty:setConfig', cfg),
+    // Levels + benefits
+    listLoyaltyLevels: () => invoke('loyalty:listLevels'),
+    createLoyaltyLevel: (level: Record<string, unknown>) => invoke('loyalty:createLevel', level),
+    updateLoyaltyLevel: (id: number, level: Record<string, unknown>) =>
+      invoke('loyalty:updateLevel', id, level),
+    deleteLoyaltyLevel: (id: number) => invoke('loyalty:deleteLevel', id),
+    getLevelBenefits: (levelId: number) => invoke('loyalty:levelBenefits', levelId),
+    setLevelBenefits: (levelId: number, benefits: Record<string, unknown>[]) =>
+      invoke('loyalty:setLevelBenefits', levelId, benefits),
+    getCustomerLevel: (customerId: number) => invoke('loyalty:customerLevel', customerId),
+    getLevelDiscount: (customerId: number | null, subtotal: number) =>
+      invoke('loyalty:levelDiscount', customerId, subtotal),
+    getTicketBalance: (customerId: number) => invoke('loyalty:ticketBalance', customerId),
+    processMonthlyBenefits: () => invoke('loyalty:processMonthly'),
     getLoyaltyBalance: (customerId: number) => invoke('loyalty:balance', customerId),
     getLoyaltyBalances: () => invoke('loyalty:allBalances'),
     getLoyaltySummaryByCustomer: () => invoke('loyalty:summaryByCustomer'),
