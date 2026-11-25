@@ -45,8 +45,9 @@ interface AppSidebarProps {
 export function AppSidebar({ drawerOpen = false, onNavigate }: AppSidebarProps): JSX.Element {
   // `collapsed` only affects landscape/desktop. In portrait the sidebar is an
   // off-canvas drawer that always shows full-width labels.
+  // Cerrada (encogida) por defecto; solo queda expandida si el usuario la abrió.
   const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem('sidebar_collapsed') === 'true'
+    () => localStorage.getItem('sidebar_collapsed') !== 'false'
   )
   const navigate = useNavigate()
   const { status } = useLoyalty()

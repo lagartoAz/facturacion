@@ -13,6 +13,7 @@ import { formatUSD } from '@/lib/currency'
 import { ProductThumb } from '@/components/ProductThumb'
 import { Plus, Search, Pencil, ToggleLeft, ToggleRight, BarChart3, ChevronLeft, ChevronRight, PackagePlus, Star } from 'lucide-react'
 import { useLoyalty } from '@/hooks/useLoyalty'
+import { useListKeyboardNav } from '@/hooks/use-list-keyboard-nav'
 import ProductIntakeDialog from '@/components/ProductIntakeDialog'
 import ProductFormDialog, { type ProductForForm } from '@/components/ProductFormDialog'
 import {
@@ -100,6 +101,13 @@ export default function ProductsPage(): JSX.Element {
   useEffect(() => {
     loadProducts()
   }, [loadProducts])
+
+  // Teclado: ↑/↓ resaltan una fila, Enter la edita.
+  const { activeIndex, setActiveIndex } = useListKeyboardNav(products.length, (i) => {
+    const p = products[i]
+    if (p) openEditDialog(p)
+  })
+  useEffect(() => setActiveIndex(-1), [productPage, search, stockFilter, setActiveIndex])
 
   function openNewDialog(): void {
     setEditingProduct(null)
@@ -190,8 +198,12 @@ export default function ProductsPage(): JSX.Element {
             </tr>
           </thead>
           <tbody>
-            {products.map((p) => (
-              <tr key={p.id} className="border-t hover:bg-muted/30">
+            {products.map((p, i) => (
+              <tr
+                key={p.id}
+                data-kbd-active={i === activeIndex}
+                className={`border-t hover:bg-muted/30 ${i === activeIndex ? 'bg-accent' : ''}`}
+              >
                 <td className="p-2">
                   <ProductThumb productId={p.id} hasImage={!!p.has_image} name={p.name} />
                 </td>
@@ -247,8 +259,12 @@ export default function ProductsPage(): JSX.Element {
       </div>
 
       <div className="landscape:hidden space-y-2">
-        {products.map((p) => (
-          <div key={p.id} className="border rounded-lg p-3 space-y-2">
+        {products.map((p, i) => (
+          <div
+            key={p.id}
+            data-kbd-active={i === activeIndex}
+            className={`border rounded-lg p-3 space-y-2 ${i === activeIndex ? 'bg-accent' : ''}`}
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ProductThumb productId={p.id} hasImage={!!p.has_image} name={p.name} />

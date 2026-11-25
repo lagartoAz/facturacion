@@ -36,6 +36,18 @@ export function registerCustomerHandlers(db: Database.Database): void {
     return service.getBalances()
   })
 
+  ipcMain.handle('customers:getOverdueMonths', () => {
+    return service.getOverdueMonths()
+  })
+
+  ipcMain.handle('customers:getSectors', () => {
+    return service.getSectors()
+  })
+
+  ipcMain.handle('customers:getSectorCounts', () => {
+    return service.getSectorCounts()
+  })
+
   ipcMain.handle('customers:getCreditInvoices', (_event, id: number) => {
     return service.getCreditInvoices(id)
   })

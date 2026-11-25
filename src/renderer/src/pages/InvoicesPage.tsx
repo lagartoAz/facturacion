@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useListKeyboardNav } from '@/hooks/use-list-keyboard-nav'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -218,6 +219,18 @@ export default function InvoicesPage(): JSX.Element {
     else if (tab === 'quotes') void loadQuotes()
     else void loadIntakes()
   }, [tab, loadInvoices, loadQuotes, loadIntakes])
+
+  // Teclado: ↑/↓ resaltan una factura y Enter la abre (solo en la pestaña Facturas).
+  const { activeIndex: invActiveIndex, setActiveIndex: setInvActiveIndex } = useListKeyboardNav(
+    tab === 'invoices' ? invoices.length : 0,
+    (i) => {
+      const inv = invoices[i]
+      if (inv) void viewInvoice(inv.id)
+    }
+  )
+  useEffect(() => {
+    setInvActiveIndex(-1)
+  }, [tab, dateFrom, dateTo, setInvActiveIndex])
 
   function showNotification(msg: string): void {
     setNotification(msg)
@@ -579,8 +592,12 @@ export default function InvoicesPage(): JSX.Element {
                 </tr>
               </thead>
               <tbody>
-                {invoices.map((inv) => (
-                  <tr key={inv.id} className="border-t hover:bg-muted/30">
+                {invoices.map((inv, i) => (
+                  <tr
+                    key={inv.id}
+                    data-kbd-active={i === invActiveIndex}
+                    className={`border-t hover:bg-muted/30 ${i === invActiveIndex ? 'bg-accent' : ''}`}
+                  >
                     <td className="p-3 font-mono text-xs">{inv.invoice_number}</td>
                     <td className="p-3">{format(new Date(inv.created_at), 'dd/MM/yyyy HH:mm')}</td>
                     <td className="p-3">{inv.customer_name || 'Consumidor Final'}</td>
@@ -659,8 +676,12 @@ export default function InvoicesPage(): JSX.Element {
             </table>
           </div>
           <div className="landscape:hidden space-y-2">
-            {invoices.map((inv) => (
-              <div key={inv.id} className="border rounded-lg p-3 space-y-2">
+            {invoices.map((inv, i) => (
+              <div
+                key={inv.id}
+                data-kbd-active={i === invActiveIndex}
+                className={`border rounded-lg p-3 space-y-2 ${i === invActiveIndex ? 'bg-accent' : ''}`}
+              >
                 <div className="flex justify-between items-start gap-2">
                   <span className="font-medium font-mono text-xs">{inv.invoice_number}</span>
                   <span className="font-semibold">{formatUSD(inv.total_usd)}</span>

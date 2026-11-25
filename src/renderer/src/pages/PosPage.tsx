@@ -218,6 +218,9 @@ export default function PosPage(): JSX.Element {
   const [searchResults, setSearchResults] = useState<Product[]>([])
   const [customers, setCustomers] = useState<{ id: number; name: string; id_rif: string | null }[]>([])
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null)
+  // Meses de atraso por cliente. 2+ meses = deudor crítico: alerta roja y no
+  // puede comprar a crédito (la deuda alta por monto no bloquea).
+  const [overdueMonths, setOverdueMonths] = useState<Record<number, number>>({})
   // Barra de cliente en tres partes: búsqueda por nombre (incremental), por
   // cédula (autocompleta el nombre al coincidir) y botón para crear cliente.
   const [custNameQuery, setCustNameQuery] = useState('')
@@ -226,6 +229,10 @@ export default function PosPage(): JSX.Element {
   const [newCustomerDialogOpen, setNewCustomerDialogOpen] = useState(false)
   const [ncName, setNcName] = useState('')
   const [ncCedula, setNcCedula] = useState('')
+  const [ncPhone, setNcPhone] = useState('')
+  const [ncSector, setNcSector] = useState('')
+  // Sectores ya usados, para sugerir al crear un cliente desde el POS.
+  const [sectors, setSectors] = useState<string[]>([])
   // Diálogo para registrar un producto nuevo y agregarlo al carrito al momento.
   const [newProductDialogOpen, setNewProductDialogOpen] = useState(false)
   const [npName, setNpName] = useState('')
@@ -325,14 +332,19 @@ export default function PosPage(): JSX.Element {
   }, [mobile])
 
   async function loadInitialData(): Promise<void> {
-    const [ratesData, customersData, pendingCartsData, settings] = await Promise.all([
-      window.api.getExchangeRates(),
-      window.api.getCustomers(),
-      window.api.getPendingCarts(),
-      window.api.getAllSettings()
-    ])
+    const [ratesData, customersData, pendingCartsData, settings, overdue, sectorsData] =
+      await Promise.all([
+        window.api.getExchangeRates(),
+        window.api.getCustomers(),
+        window.api.getPendingCarts(),
+        window.api.getAllSettings(),
+        window.api.getCustomerOverdueMonths() as Promise<Record<number, number>>,
+        window.api.getCustomerSectors() as Promise<string[]>
+      ])
     setRates(ratesData)
     setCustomers(customersData)
+    setOverdueMonths(overdue)
+    setSectors(sectorsData)
     setPendingCarts(pendingCartsData)
     const pas = settings.print_after_sale
     if (pas === 'always' || pas === 'never') setPrintBehavior(pas)
@@ -343,6 +355,13 @@ export default function PosPage(): JSX.Element {
 
   const getRate = (currency: string): number =>
     rates.find((r) => r.currency === currency)?.rate ?? 0
+
+  // Deudor crítico: 2+ meses de atraso en su deuda más vieja. No puede comprar
+  // a crédito y se marca con una alerta roja junto al nombre.
+  const CRITICAL_MONTHS = 2
+  const isCriticalCustomer = (id: number | null | undefined): boolean =>
+    id != null && (overdueMonths[id] ?? 0) >= CRITICAL_MONTHS
+  const selectedIsCritical = isCriticalCustomer(selectedCustomerId)
 
   const addToCart = useCallback(
     (product: Product) => {
@@ -462,6 +481,8 @@ export default function PosPage(): JSX.Element {
   function openCreateCustomer(): void {
     setNcName(custNameQuery.trim())
     setNcCedula(custCedulaQuery.trim())
+    setNcPhone('')
+    setNcSector('')
     setCustDropdownOpen(false)
     setNewCustomerDialogOpen(true)
   }
@@ -474,13 +495,18 @@ export default function PosPage(): JSX.Element {
     }
     const created = (await window.api.createCustomer({
       name,
-      id_rif: ncCedula.trim() || undefined
+      id_rif: ncCedula.trim() || undefined,
+      phone: ncPhone.trim() || undefined,
+      sector: ncSector.trim() || undefined
     })) as CustomerLite
     setCustomers(await window.api.getCustomers())
+    setSectors((await window.api.getCustomerSectors()) as string[])
     selectCustomer(created)
     setNewCustomerDialogOpen(false)
     setNcName('')
     setNcCedula('')
+    setNcPhone('')
+    setNcSector('')
   }
 
   async function handleCreateProduct(): Promise<void> {
@@ -719,6 +745,15 @@ export default function PosPage(): JSX.Element {
   async function handleConfirmPayment(): Promise<void> {
     if (paymentMethod === 'credit' && !selectedCustomerId) {
       showNotification('Debe seleccionar un cliente para pago a credito')
+      return
+    }
+    // Un deudor crítico (2+ meses de atraso) no puede sumar más deuda a crédito.
+    if (
+      selectedIsCritical &&
+      (paymentMethod === 'credit' ||
+        (paymentMethod === 'mixed' && (parseFloat(mixedPayments.credit) || 0) > 0))
+    ) {
+      showNotification('Cliente con deuda crítica: no puede comprar a crédito')
       return
     }
     if (paymentMethod === 'mixed') {
@@ -1087,11 +1122,15 @@ export default function PosPage(): JSX.Element {
       {/* Left panel - Cart */}
       <div className="flex-1 min-h-0 flex flex-col p-4 landscape:border-r order-last landscape:order-none">
         {/* Customer selector: nombre (incremental) · cédula (autocompleta) · agregar */}
-        <div className="mb-4 flex items-start gap-2">
+        <div className="mb-4 space-y-1">
+          <div className="flex items-start gap-2">
           <div className="relative flex-1 min-w-0">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            {selectedIsCritical && (
+              <AlertTriangle className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-red-500" />
+            )}
             <Input
-              className="pl-9"
+              className={selectedIsCritical ? 'pl-9 pr-8' : 'pl-9'}
               placeholder="Cliente (nombre)..."
               value={custNameQuery}
               onFocus={() => setCustDropdownOpen(true)}
@@ -1120,7 +1159,12 @@ export default function PosPage(): JSX.Element {
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selectCustomer(c)}
                       >
-                        <span className="truncate">{c.name}</span>
+                        <span className="truncate flex items-center gap-1">
+                          {isCriticalCustomer(c.id) && (
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                          )}
+                          {c.name}
+                        </span>
                         {c.id_rif && (
                           <span className="text-xs text-muted-foreground shrink-0">{c.id_rif}</span>
                         )}
@@ -1155,6 +1199,13 @@ export default function PosPage(): JSX.Element {
             >
               <X className="h-4 w-4" />
             </Button>
+          )}
+          </div>
+          {selectedIsCritical && (
+            <p className="flex items-center gap-1 text-xs font-medium text-red-600">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              Deuda crítica ({overdueMonths[selectedCustomerId as number]} meses de atraso) — no puede comprar a crédito.
+            </p>
           )}
         </div>
 
@@ -1661,6 +1712,12 @@ export default function PosPage(): JSX.Element {
                   <Button
                     key={method.value}
                     variant={paymentMethod === method.value ? 'default' : 'outline'}
+                    disabled={selectedIsCritical && method.value === 'credit'}
+                    title={
+                      selectedIsCritical && method.value === 'credit'
+                        ? 'Cliente con deuda crítica: no puede comprar a crédito'
+                        : undefined
+                    }
                     onClick={() => {
                       setPaymentMethod(method.value)
                       setCashCurrency('USD')
@@ -1686,6 +1743,12 @@ export default function PosPage(): JSX.Element {
                   </Button>
                 ))}
               </div>
+              {selectedIsCritical && (
+                <p className="flex items-center gap-1 pt-1 text-xs font-medium text-red-600">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  Cliente con deuda crítica: el pago a crédito está deshabilitado.
+                </p>
+              )}
               {paymentMethod === 'cash' && (
                 <div className="space-y-2 pt-2">
                   <label className="text-xs text-muted-foreground">Moneda del efectivo</label>
@@ -2233,6 +2296,28 @@ export default function PosPage(): JSX.Element {
                 value={ncCedula}
                 onChange={(e) => setNcCedula(e.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Teléfono</label>
+              <Input
+                placeholder="Ej: 0412-1234567"
+                value={ncPhone}
+                onChange={(e) => setNcPhone(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Sector / zona</label>
+              <Input
+                list="pos-customer-sectors"
+                placeholder="Elige uno existente o escribe uno nuevo"
+                value={ncSector}
+                onChange={(e) => setNcSector(e.target.value)}
+              />
+              <datalist id="pos-customer-sectors">
+                {sectors.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setNewCustomerDialogOpen(false)}>

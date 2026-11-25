@@ -55,9 +55,9 @@ interface Summary {
 
 export default function ReportsPage(): JSX.Element {
   const { status: loyalty } = useLoyalty()
-  // Default to the full current year (1 Jan – 31 Dec).
-  const [dateFrom, setDateFrom] = useState(format(startOfYear(new Date()), 'yyyy-MM-dd'))
-  const [dateTo, setDateTo] = useState(format(endOfYear(new Date()), 'yyyy-MM-dd'))
+  // Por defecto: la última semana (7 días), gráfica por día.
+  const [dateFrom, setDateFrom] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
+  const [dateTo, setDateTo] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [dailySales, setDailySales] = useState<DailySale[]>([])
   const [hourlySales, setHourlySales] = useState<HourlySale[]>([])
   const [monthlySales, setMonthlySales] = useState<MonthlySale[]>([])
@@ -66,9 +66,11 @@ export default function ReportsPage(): JSX.Element {
   const [monthlyDebts, setMonthlyDebts] = useState<MonthlySale[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [showAllProducts, setShowAllProducts] = useState(false)
-  // Off by default: a green bar overlaying the trend of already-paid debts, so
-  // it can be compared against the outstanding (red) ones.
-  const [showPaidDebts, setShowPaidDebts] = useState(false)
+  // Clientes por sector de vivienda (no depende del rango de fechas).
+  const [sectorCounts, setSectorCounts] = useState<{ sector: string; count: number }[]>([])
+  // Visible por defecto: la barra verde de deudas ya pagadas, para ver cómo la
+  // roja (pendiente) baja y la verde sube a medida que se cobran.
+  const [showPaidDebts, setShowPaidDebts] = useState(true)
   const [viewMode, setViewMode] = useState<'money' | 'points'>('money')
   const [summary, setSummary] = useState<Summary>({
     total_revenue: 0,
@@ -79,6 +81,12 @@ export default function ReportsPage(): JSX.Element {
   useEffect(() => {
     loadData()
   }, [dateFrom, dateTo, showAllProducts, viewMode])
+
+  useEffect(() => {
+    window.api
+      .getCustomerSectorCounts()
+      .then((d) => setSectorCounts(d as { sector: string; count: number }[]))
+  }, [])
 
   const points = viewMode === 'points'
   // Format a metric value per the current view (money vs loyalty points).
@@ -145,10 +153,20 @@ export default function ReportsPage(): JSX.Element {
   const paidByDay = new Map(dailyDebts.map((d) => [d.day, d.paidCount ?? 0]))
   const paidByHour = new Map(hourlyDebts.map((d) => [parseInt(d.hour, 10), d.paidCount ?? 0]))
   const paidByMonth = new Map(monthlyDebts.map((d) => [d.month, d.paidCount ?? 0]))
+  // Money behind each bucket: outstanding debt (red) and already-paid debt
+  // (green), so the tooltip can show amounts alongside the counts.
+  const debtMoneyByDay = new Map(dailyDebts.map((d) => [d.day, d.total]))
+  const debtMoneyByHour = new Map(hourlyDebts.map((d) => [parseInt(d.hour, 10), d.total]))
+  const debtMoneyByMonth = new Map(monthlyDebts.map((d) => [d.month, d.total]))
+  const paidMoneyByDay = new Map(dailyDebts.map((d) => [d.day, d.paidTotal ?? 0]))
+  const paidMoneyByHour = new Map(hourlyDebts.map((d) => [parseInt(d.hour, 10), d.paidTotal ?? 0]))
+  const paidMoneyByMonth = new Map(monthlyDebts.map((d) => [d.month, d.paidTotal ?? 0]))
   const dailyChartData = dailySales.map((s) => ({
     ...s,
     debts: debtsByDay.get(s.day) ?? 0,
-    paidDebts: paidByDay.get(s.day) ?? 0
+    paidDebts: paidByDay.get(s.day) ?? 0,
+    debtsMoney: debtMoneyByDay.get(s.day) ?? 0,
+    paidDebtsMoney: paidMoneyByDay.get(s.day) ?? 0
   }))
 
   // Fill the gaps between the first and last hour with sales so the bars sit on
@@ -159,11 +177,22 @@ export default function ReportsPage(): JSX.Element {
     const min = Math.min(...hours)
     const max = Math.max(...hours)
     const byHour = new Map(hourlySales.map((h) => [parseInt(h.hour, 10), h]))
-    const filled: (HourlySale & { debts: number; paidDebts: number })[] = []
+    const filled: (HourlySale & {
+      debts: number
+      paidDebts: number
+      debtsMoney: number
+      paidDebtsMoney: number
+    })[] = []
     for (let h = min; h <= max; h++) {
       const label = String(h).padStart(2, '0')
       const base = byHour.get(h) ?? { hour: label, total: 0, count: 0 }
-      filled.push({ ...base, debts: debtsByHour.get(h) ?? 0, paidDebts: paidByHour.get(h) ?? 0 })
+      filled.push({
+        ...base,
+        debts: debtsByHour.get(h) ?? 0,
+        paidDebts: paidByHour.get(h) ?? 0,
+        debtsMoney: debtMoneyByHour.get(h) ?? 0,
+        paidDebtsMoney: paidMoneyByHour.get(h) ?? 0
+      })
     }
     return filled
   })()
@@ -175,9 +204,18 @@ export default function ReportsPage(): JSX.Element {
     total: number
     debts: number
     paidDebts: number
+    debtsMoney: number
+    paidDebtsMoney: number
   }[] => {
     const byMonth = new Map(monthlySales.map((m) => [m.month, m.total]))
-    const out: { label: string; total: number; debts: number; paidDebts: number }[] = []
+    const out: {
+      label: string
+      total: number
+      debts: number
+      paidDebts: number
+      debtsMoney: number
+      paidDebtsMoney: number
+    }[] = []
     for (let i = 11; i >= 0; i--) {
       const d = subMonths(new Date(), i)
       const key = format(d, 'yyyy-MM')
@@ -185,7 +223,9 @@ export default function ReportsPage(): JSX.Element {
         label: `${MESES[d.getMonth()]} ${key.slice(2, 4)}`,
         total: byMonth.get(key) ?? 0,
         debts: debtsByMonth.get(key) ?? 0,
-        paidDebts: paidByMonth.get(key) ?? 0
+        paidDebts: paidByMonth.get(key) ?? 0,
+        debtsMoney: debtMoneyByMonth.get(key) ?? 0,
+        paidDebtsMoney: paidMoneyByMonth.get(key) ?? 0
       })
     }
     return out
@@ -376,9 +416,9 @@ export default function ReportsPage(): JSX.Element {
                   <Tooltip
                     formatter={(value: number, _n, item) =>
                       item?.dataKey === 'debts'
-                        ? [value, 'Deudas']
+                        ? [`${value} · ${formatUSD((item?.payload?.debtsMoney as number) ?? 0)}`, 'Deudas']
                         : item?.dataKey === 'paidDebts'
-                          ? [value, 'Deudas pagadas']
+                          ? [`${value} · ${formatUSD((item?.payload?.paidDebtsMoney as number) ?? 0)}`, 'Deudas pagadas']
                           : [fmtVal(value), points ? 'Puntos' : 'Total']
                     }
                   />
@@ -434,9 +474,9 @@ export default function ReportsPage(): JSX.Element {
                   <Tooltip
                     formatter={(value: number, _n, item) =>
                       item?.dataKey === 'debts'
-                        ? [value, 'Deudas']
+                        ? [`${value} · ${formatUSD((item?.payload?.debtsMoney as number) ?? 0)}`, 'Deudas']
                         : item?.dataKey === 'paidDebts'
-                          ? [value, 'Deudas pagadas']
+                          ? [`${value} · ${formatUSD((item?.payload?.paidDebtsMoney as number) ?? 0)}`, 'Deudas pagadas']
                           : [fmtVal(value), points ? 'Puntos' : 'Total']
                     }
                     labelFormatter={(label) => `${label}:00 - ${label}:59`}
@@ -486,9 +526,9 @@ export default function ReportsPage(): JSX.Element {
                 <Tooltip
                   formatter={(value: number, _n, item) =>
                     item?.dataKey === 'debts'
-                      ? [value, 'Deudas']
+                      ? [`${value} · ${formatUSD((item?.payload?.debtsMoney as number) ?? 0)}`, 'Deudas']
                       : item?.dataKey === 'paidDebts'
-                        ? [value, 'Deudas pagadas']
+                        ? [`${value} · ${formatUSD((item?.payload?.paidDebtsMoney as number) ?? 0)}`, 'Deudas pagadas']
                         : [fmtVal(value), points ? 'Puntos' : 'Total']
                   }
                   labelFormatter={(label) => format(new Date(label + 'T00:00:00'), 'dd/MM/yyyy')}
@@ -522,6 +562,35 @@ export default function ReportsPage(): JSX.Element {
           ) : (
             <p className="text-center text-muted-foreground py-8">
               No hay datos para el periodo seleccionado
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Clientes por sector de vivienda (barras de un solo color, solo cantidad) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Clientes por sector</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sectorCounts.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={sectorCounts}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="sector" fontSize={12} interval={0} angle={-20} textAnchor="end" height={60} />
+                <YAxis allowDecimals={false} fontSize={12} />
+                <Tooltip formatter={(value: number) => [value, 'Clientes']} />
+                <Bar
+                  name="Clientes"
+                  dataKey="count"
+                  fill="hsl(221.2, 83.2%, 53.3%)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-center text-muted-foreground py-8">
+              Aún no hay clientes con sector asignado. Agrégalo al registrar o editar un cliente.
             </p>
           )}
         </CardContent>

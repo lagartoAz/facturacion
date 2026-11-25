@@ -9,6 +9,7 @@ export interface Customer {
   phone: string | null
   email: string | null
   notes: string | null
+  sector: string | null
   created_at: string
   updated_at: string
 }
@@ -20,6 +21,7 @@ export interface CreateCustomerDTO {
   phone?: string
   email?: string
   notes?: string
+  sector?: string
 }
 
 export interface UpdateCustomerDTO extends Partial<CreateCustomerDTO> {}
@@ -57,7 +59,7 @@ export class CustomerService {
   create(data: CreateCustomerDTO): Customer {
     const result = this.db
       .prepare(
-        'INSERT INTO customers (name, id_rif, address, phone, email, notes) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO customers (name, id_rif, address, phone, email, notes, sector) VALUES (?, ?, ?, ?, ?, ?, ?)'
       )
       .run(
         data.name,
@@ -65,7 +67,8 @@ export class CustomerService {
         data.address || null,
         data.phone || null,
         data.email || null,
-        data.notes || null
+        data.notes || null,
+        data.sector?.trim() || null
       )
     return this.db.prepare('SELECT * FROM customers WHERE id = ?').get(result.lastInsertRowid) as Customer
   }
@@ -80,6 +83,7 @@ export class CustomerService {
     if (data.phone !== undefined) { fields.push('phone = ?'); params.push(data.phone || null) }
     if (data.email !== undefined) { fields.push('email = ?'); params.push(data.email || null) }
     if (data.notes !== undefined) { fields.push('notes = ?'); params.push(data.notes || null) }
+    if (data.sector !== undefined) { fields.push('sector = ?'); params.push(data.sector?.trim() || null) }
 
     if (fields.length > 0) {
       fields.push("updated_at = datetime('now')")
@@ -126,6 +130,76 @@ export class CustomerService {
     }
 
     return result
+  }
+
+  // Meses de atraso de cada cliente = antigüedad (en meses calendario) de su
+  // factura a crédito más vieja que AÚN tiene saldo pendiente. Los pagos no se
+  // atan a una factura, así que se saldan en orden (FIFO, la más vieja primero),
+  // igual que en reportes y en el diálogo de deudas. Un cliente crítico es el
+  // que llega al umbral de meses (2 por defecto). Solo aparecen los que deben.
+  getOverdueMonths(): Record<number, number> {
+    const invoices = this.db
+      .prepare(
+        `SELECT customer_id, total_usd, created_at
+         FROM invoices
+         WHERE payment_method = 'credit' AND status = 'completed' AND customer_id IS NOT NULL
+         ORDER BY customer_id, datetime(created_at) ASC, id ASC`
+      )
+      .all() as { customer_id: number; total_usd: number; created_at: string }[]
+
+    const payRows = this.db
+      .prepare(
+        'SELECT customer_id, COALESCE(SUM(amount_usd), 0) as total FROM customer_payments GROUP BY customer_id'
+      )
+      .all() as { customer_id: number; total: number }[]
+    const paidByCustomer = new Map(payRows.map((p) => [p.customer_id, p.total]))
+
+    const now = new Date()
+    const out: Record<number, number> = {}
+    let curCust: number | null = null
+    let remaining = 0
+    for (const inv of invoices) {
+      if (inv.customer_id !== curCust) {
+        curCust = inv.customer_id
+        remaining = paidByCustomer.get(inv.customer_id) ?? 0
+      }
+      if (out[inv.customer_id] !== undefined) continue // ya ubicamos su factura más vieja sin pagar
+      if (remaining >= inv.total_usd) {
+        remaining -= inv.total_usd
+        continue // esta factura quedó saldada por pagos previos
+      }
+      // Primera factura con saldo pendiente para este cliente → su atraso.
+      remaining = 0
+      const then = new Date(inv.created_at.replace(' ', 'T'))
+      let months = (now.getFullYear() - then.getFullYear()) * 12 + (now.getMonth() - then.getMonth())
+      if (now.getDate() < then.getDate()) months--
+      out[inv.customer_id] = Math.max(0, months)
+    }
+    return out
+  }
+
+  // Sectores ya usados (para sugerir al registrar un cliente). Orden alfabético.
+  getSectors(): string[] {
+    return (
+      this.db
+        .prepare(
+          "SELECT DISTINCT sector FROM customers WHERE sector IS NOT NULL AND TRIM(sector) != '' ORDER BY sector COLLATE NOCASE ASC"
+        )
+        .all() as { sector: string }[]
+    ).map((r) => r.sector)
+  }
+
+  // Cantidad de clientes por sector de vivienda, para la gráfica de barras.
+  getSectorCounts(): { sector: string; count: number }[] {
+    return this.db
+      .prepare(
+        `SELECT sector, COUNT(*) as count
+         FROM customers
+         WHERE sector IS NOT NULL AND TRIM(sector) != ''
+         GROUP BY sector
+         ORDER BY count DESC, sector COLLATE NOCASE ASC`
+      )
+      .all() as { sector: string; count: number }[]
   }
 
   getCreditInvoices(customerId: number): { id: number; invoice_number: string; total_usd: number; created_at: string }[] {

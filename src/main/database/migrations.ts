@@ -658,4 +658,11 @@ export function runMigrations(db: Database.Database): void {
     `)
     db.pragma('user_version = 26')
   }
+
+  if (version < 27) {
+    // Sector / zona de vivienda del cliente (texto libre con sugerencias de los
+    // ya usados). Alimenta la gráfica "Clientes por sector" en Reportes.
+    db.exec(`ALTER TABLE customers ADD COLUMN sector TEXT;`)
+    db.pragma('user_version = 27')
+  }
 }

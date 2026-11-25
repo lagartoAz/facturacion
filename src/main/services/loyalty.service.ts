@@ -1404,8 +1404,10 @@ export class LoyaltyService {
       const ins = this.db.prepare(
         "INSERT INTO loyalty_tickets_ledger (customer_id, invoice_id, raffle_id, tickets, type, note) VALUES (?, NULL, ?, 1, 'adjust', ?)"
       )
-      for (const m of this.membersOfLevel(levelId)) {
-        ins.run(m.customer_id, raffleId, `Miembro ${level.name}`)
+      // Una rifa de un nivel incluye también a los niveles superiores: si es de
+      // Oro, entran Oro y todos los de arriba (p. ej. Platino).
+      for (const m of this.membersOfLevelOrHigher(levelId)) {
+        ins.run(m.customer_id, raffleId, `Nivel ${level.name} o superior`)
       }
     })
     tx()
@@ -1461,6 +1463,22 @@ export class LoyaltyService {
       )
       .all() as { customer_id: number }[]
     return customers.filter((c) => this.customerLevel(c.customer_id).level?.id === levelId)
+  }
+
+  // Members of a level AND every level above it. `listLevels()` is ascending
+  // (lowest first), so "this level or higher" = this index onward.
+  private membersOfLevelOrHigher(levelId: number): { customer_id: number }[] {
+    const levels = this.listLevels()
+    const idx = levels.findIndex((l) => l.id === levelId)
+    if (idx < 0) return []
+    const eligible = new Set(levels.slice(idx).map((l) => l.id))
+    const customers = this.db
+      .prepare(`SELECT DISTINCT customer_id FROM loyalty_ledger WHERE type = 'earn'`)
+      .all() as { customer_id: number }[]
+    return customers.filter((c) => {
+      const lv = this.customerLevel(c.customer_id).level
+      return lv ? eligible.has(lv.id) : false
+    })
   }
 
   // Runs the monthly perks: ensures each level's monthly raffle exists and its

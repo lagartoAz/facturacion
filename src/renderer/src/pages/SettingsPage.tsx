@@ -623,7 +623,7 @@ export default function SettingsPage(): JSX.Element {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="criticalDebt">Deuda critica a partir de (USD)</Label>
+            <Label htmlFor="criticalDebt">Deuda alta a partir de (USD)</Label>
             <Input
               id="criticalDebt"
               type="number"
@@ -635,7 +635,9 @@ export default function SettingsPage(): JSX.Element {
               className="max-w-[12rem]"
             />
             <p className="text-xs text-muted-foreground">
-              Un cliente que deba mas de este monto se marca como deudor critico en el Home y en Clientes.
+              Un cliente que deba mas de este monto se marca con deuda alta (rojo) en Clientes. El
+              deudor <strong>crítico</strong> es distinto: el que tiene 2 o más meses de atraso, y es
+              el que no puede comprar a crédito.
             </p>
           </div>
           <Button onClick={saveDebtSettings} size="sm">

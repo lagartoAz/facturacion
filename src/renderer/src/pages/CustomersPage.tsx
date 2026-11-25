@@ -15,6 +15,7 @@ import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency
 import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft, Star, Ticket, BarChart3, Award } from 'lucide-react'
 import { format } from 'date-fns'
 import { useLoyalty } from '@/hooks/useLoyalty'
+import { useListKeyboardNav } from '@/hooks/use-list-keyboard-nav'
 import CustomerStatsDialog from '@/components/CustomerStatsDialog'
 
 interface Customer {
@@ -25,6 +26,7 @@ interface Customer {
   phone: string | null
   email: string | null
   notes: string | null
+  sector: string | null
 }
 
 interface CreditInvoice {
@@ -74,7 +76,8 @@ const emptyForm = {
   address: '',
   phone: '',
   email: '',
-  notes: ''
+  notes: '',
+  sector: ''
 }
 
 export default function CustomersPage(): JSX.Element {
@@ -84,6 +87,10 @@ export default function CustomersPage(): JSX.Element {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [balances, setBalances] = useState<Record<number, number>>({})
+  // Meses de atraso por cliente; 2+ meses = deudor crítico.
+  const [overdue, setOverdue] = useState<Record<number, number>>({})
+  // Sectores ya usados, para sugerir al registrar/editar un cliente.
+  const [sectors, setSectors] = useState<string[]>([])
   const [loyaltySummary, setLoyaltySummary] = useState<
     Record<number, { points: number; entries: number }>
   >({})
@@ -113,12 +120,16 @@ export default function CustomersPage(): JSX.Element {
   const { status: loyalty } = useLoyalty()
 
   const loadCustomers = useCallback(async () => {
-    const [customersData, balancesData] = await Promise.all([
+    const [customersData, balancesData, overdueData, sectorsData] = await Promise.all([
       window.api.getCustomers(search || undefined),
-      window.api.getCustomerBalances()
+      window.api.getCustomerBalances(),
+      window.api.getCustomerOverdueMonths() as Promise<Record<number, number>>,
+      window.api.getCustomerSectors() as Promise<string[]>
     ])
     setCustomers(customersData)
     setBalances(balancesData)
+    setOverdue(overdueData)
+    setSectors(sectorsData)
   }, [search])
 
   // Points / raffle entries per customer, loaded only when the add-on is on.
@@ -178,7 +189,8 @@ export default function CustomersPage(): JSX.Element {
       address: c.address || '',
       phone: c.phone || '',
       email: c.email || '',
-      notes: c.notes || ''
+      notes: c.notes || '',
+      sector: c.sector || ''
     })
     setDialogOpen(true)
   }
@@ -190,7 +202,8 @@ export default function CustomersPage(): JSX.Element {
       address: form.address || undefined,
       phone: form.phone || undefined,
       email: form.email || undefined,
-      notes: form.notes || undefined
+      notes: form.notes || undefined,
+      sector: form.sector || undefined
     }
 
     if (editingId) {
@@ -304,8 +317,16 @@ export default function CustomersPage(): JSX.Element {
   function getDebtBadge(customerId: number): { label: string; variant: 'default' | 'secondary' | 'destructive'; className?: string } {
     const balance = balances[customerId] ?? 0
     if (balance <= 0) return { label: 'Solvente', variant: 'default', className: 'bg-green-600 hover:bg-green-700' }
-    if (balance <= criticalThreshold) return { label: `Debe ${formatUSD(balance)}`, variant: 'secondary', className: 'bg-yellow-500 text-white hover:bg-yellow-600' }
-    return { label: `Debe ${formatUSD(balance)}`, variant: 'destructive' }
+    // Crítico = 2+ meses de atraso (no por monto). Rojo intenso.
+    if ((overdue[customerId] ?? 0) >= 2)
+      return {
+        label: `Crítico · Debe ${formatUSD(balance)}`,
+        variant: 'destructive',
+        className: 'bg-red-700 hover:bg-red-800'
+      }
+    // Deuda alta por monto: rojo normal, pero NO crítico.
+    if (balance > criticalThreshold) return { label: `Debe ${formatUSD(balance)}`, variant: 'destructive' }
+    return { label: `Debe ${formatUSD(balance)}`, variant: 'secondary', className: 'bg-yellow-500 text-white hover:bg-yellow-600' }
   }
 
   // Small colored chip showing the customer's loyalty level, if any.
@@ -337,6 +358,40 @@ export default function CustomersPage(): JSX.Element {
     return `${method} (Bs)`
   }
 
+  // Lista filtrada/ordenada/paginada, a nivel de componente para que el teclado
+  // (↑/↓ + Enter) use exactamente las filas que se muestran.
+  const filteredCustomers = customers.filter((c) => {
+    const bal = balances[c.id] ?? 0
+    if (debtFilter === 'debtor') return bal > 0
+    if (debtFilter === 'solvent') return bal <= 0
+    // "Críticos" = 2+ meses de atraso (no por monto).
+    if (debtFilter === 'extreme') return (overdue[c.id] ?? 0) >= 2
+    return true
+  })
+  if (sortByLevel) {
+    filteredCustomers.sort(
+      (a, b) =>
+        (levels[b.id]?.rank ?? -1) - (levels[a.id]?.rank ?? -1) || a.name.localeCompare(b.name)
+    )
+  }
+  const customerTotalPages = Math.ceil(filteredCustomers.length / CUSTOMER_PAGE_SIZE)
+  const customerCurrentPage = Math.min(customerPage, customerTotalPages || 1)
+  const pagedCustomers = filteredCustomers.slice(
+    (customerCurrentPage - 1) * CUSTOMER_PAGE_SIZE,
+    customerCurrentPage * CUSTOMER_PAGE_SIZE
+  )
+
+  const { activeIndex: custActiveIndex, setActiveIndex: setCustActiveIndex } = useListKeyboardNav(
+    pagedCustomers.length,
+    (i) => {
+      const c = pagedCustomers[i]
+      if (c) openEdit(c)
+    }
+  )
+  useEffect(() => {
+    setCustActiveIndex(-1)
+  }, [customerPage, search, debtFilter, sortByLevel, setCustActiveIndex])
+
   return (
     <div className="p-4 landscape:p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -362,7 +417,7 @@ export default function CustomersPage(): JSX.Element {
             ['all',     'Todos'],
             ['debtor',  'Deudores'],
             ['solvent', 'Solventes'],
-            ['extreme', 'Deuda critica'],
+            ['extreme', 'Criticos'],
           ] as [DebtFilter, string][]).map(([val, label]) => (
             <Button
               key={val}
@@ -389,24 +444,10 @@ export default function CustomersPage(): JSX.Element {
       </div>
 
       {(() => {
-        const filtered = customers.filter((c) => {
-          const bal = balances[c.id] ?? 0
-          if (debtFilter === 'debtor')  return bal > 0
-          if (debtFilter === 'solvent') return bal <= 0
-          if (debtFilter === 'extreme') return bal > criticalThreshold
-          return true
-        })
-        if (sortByLevel) {
-          // Highest level first; customers without a level drop to the bottom.
-          filtered.sort(
-            (a, b) =>
-              (levels[b.id]?.rank ?? -1) - (levels[a.id]?.rank ?? -1) ||
-              a.name.localeCompare(b.name)
-          )
-        }
-        const totalPages = Math.ceil(filtered.length / CUSTOMER_PAGE_SIZE)
-        const page = Math.min(customerPage, totalPages || 1)
-        const paged = filtered.slice((page - 1) * CUSTOMER_PAGE_SIZE, page * CUSTOMER_PAGE_SIZE)
+        const filtered = filteredCustomers
+        const totalPages = customerTotalPages
+        const page = customerCurrentPage
+        const paged = pagedCustomers
         return (
           <>
             <div className="hidden landscape:block border rounded-lg overflow-x-auto">
@@ -427,8 +468,12 @@ export default function CustomersPage(): JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {paged.map((c) => (
-                    <tr key={c.id} className="border-t hover:bg-muted/30">
+                  {paged.map((c, i) => (
+                    <tr
+                      key={c.id}
+                      data-kbd-active={i === custActiveIndex}
+                      className={`border-t hover:bg-muted/30 ${i === custActiveIndex ? 'bg-accent' : ''}`}
+                    >
                       <td className="p-3 font-medium">
                         <div className="flex flex-col gap-1">
                           <span>{c.name}</span>
@@ -487,10 +532,14 @@ export default function CustomersPage(): JSX.Element {
               </table>
             </div>
             <div className="landscape:hidden space-y-2">
-              {paged.map((c) => {
+              {paged.map((c, i) => {
                 const badge = getDebtBadge(c.id)
                 return (
-                  <div key={c.id} className="border rounded-lg p-3 space-y-2">
+                  <div
+                    key={c.id}
+                    data-kbd-active={i === custActiveIndex}
+                    className={`border rounded-lg p-3 space-y-2 ${i === custActiveIndex ? 'bg-accent' : ''}`}
+                  >
                     <div className="flex justify-between items-start">
                       <div className="flex flex-col gap-1">
                         <span className="font-medium">{c.name}</span>
@@ -606,6 +655,20 @@ export default function CustomersPage(): JSX.Element {
                 value={form.address}
                 onChange={(e) => updateForm('address', e.target.value)}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Sector / zona</Label>
+              <Input
+                list="customer-sectors"
+                placeholder="Elige uno existente o escribe uno nuevo"
+                value={form.sector}
+                onChange={(e) => updateForm('sector', e.target.value)}
+              />
+              <datalist id="customer-sectors">
+                {sectors.map((s) => (
+                  <option key={s} value={s} />
+                ))}
+              </datalist>
             </div>
             <div className="space-y-2">
               <Label>Notas</Label>

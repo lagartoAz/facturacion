@@ -57,6 +57,9 @@ export function createApi(invoke: Invoke) {
     deleteCustomer: (id: number) => invoke('customers:delete', id),
     getCustomerBalance: (id: number) => invoke('customers:getBalance', id),
     getCustomerBalances: () => invoke('customers:getBalances'),
+    getCustomerOverdueMonths: () => invoke('customers:getOverdueMonths'),
+    getCustomerSectors: () => invoke('customers:getSectors'),
+    getCustomerSectorCounts: () => invoke('customers:getSectorCounts'),
     getCustomerCreditInvoices: (id: number) => invoke('customers:getCreditInvoices', id),
     addCustomerPayment: (
       id: number,

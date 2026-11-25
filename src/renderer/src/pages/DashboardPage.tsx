@@ -140,20 +140,19 @@ export default function DashboardPage(): JSX.Element {
     const today = format(new Date(), 'yyyy-MM-dd')
     const weekAgo = format(subDays(new Date(), 7), 'yyyy-MM-dd')
 
-    const [sales, lowStock, ratesData, balances, thresholdRaw] = await Promise.all([
+    const [sales, lowStock, ratesData, overdue] = await Promise.all([
       window.api.getDailySales(weekAgo, today) as Promise<DailySale[]>,
       window.api.getLowStockCount(),
       window.api.getExchangeRates() as Promise<ExchangeRate[]>,
-      window.api.getCustomerBalances() as Promise<Record<number, number>>,
-      window.api.getSetting('critical_debt_threshold') as Promise<string | null>
+      window.api.getCustomerOverdueMonths() as Promise<Record<number, number>>
     ])
 
     setWeekSales(sales)
     setRates(ratesData)
     setLowStockCount(lowStock)
 
-    const threshold = parseFloat(thresholdRaw ?? '') || 40
-    setCriticalDebtors(Object.values(balances).filter((b) => b > threshold).length)
+    // Deudor crítico = 2+ meses de atraso en su deuda más vieja (no por monto).
+    setCriticalDebtors(Object.values(overdue).filter((m) => m >= 2).length)
   }
 
   const getRate = (currency: string): number =>
