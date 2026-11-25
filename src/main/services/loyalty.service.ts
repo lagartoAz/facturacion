@@ -625,6 +625,45 @@ export class LoyaltyService {
     return out
   }
 
+  // The loyalty level of every customer with earn history, keyed by customer id.
+  // Unlike `summaryByCustomer` this does not require a live points balance (a
+  // customer keeps their level after redeeming), so the customers list can show
+  // and sort by level for everyone. `rank` grows with the level (0 = lowest) for
+  // easy sorting. Empty when levels are off or not applicable to the mode.
+  levelsByCustomer(): Record<number, { name: string; color: string | null; rank: number }> {
+    const cfg = this.getConfig()
+    if (!cfg.levels_enabled || !pointsActive(cfg.mode)) return {}
+    const levels = this.listLevels() // ascending by sort_order, then min_points
+    if (levels.length === 0) return {}
+
+    const months = cfg.level_window_months
+    const where =
+      months > 0
+        ? `AND created_at >= datetime('now', 'localtime', '-${Math.round(months)} months')`
+        : ''
+    const rows = this.db
+      .prepare(
+        `SELECT customer_id, COALESCE(SUM(points), 0) as pts FROM loyalty_ledger
+         WHERE type = 'earn' ${where} GROUP BY customer_id`
+      )
+      .all() as { customer_id: number; pts: number }[]
+
+    const out: Record<number, { name: string; color: string | null; rank: number }> = {}
+    for (const r of rows) {
+      let rank = -1
+      for (let i = 0; i < levels.length; i++) {
+        if (r.pts >= levels[i].min_points) rank = i
+      }
+      if (rank >= 0)
+        out[r.customer_id] = {
+          name: levels[rank].name,
+          color: levels[rank].color,
+          rank
+        }
+    }
+    return out
+  }
+
   history(customerId: number, limit = 100): LoyaltyEntry[] {
     return this.db
       .prepare(

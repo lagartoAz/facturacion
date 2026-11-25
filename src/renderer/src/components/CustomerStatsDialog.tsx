@@ -25,6 +25,8 @@ interface DailyRow {
   day: string
   total: number
   count: number
+  paidCount?: number
+  paidTotal?: number
 }
 interface Summary {
   total_revenue: number
@@ -53,6 +55,8 @@ export default function CustomerStatsDialog({
   const { status: loyalty } = useLoyalty()
   const [range, setRange] = useState<'30' | '90' | 'year'>('30')
   const [viewMode, setViewMode] = useState<'money' | 'points'>('money')
+  // Off by default: green trend bar for this customer's already-paid debts.
+  const [showPaidDebts, setShowPaidDebts] = useState(false)
   const [daily, setDaily] = useState<DailyRow[]>([])
   const [dailyDebts, setDailyDebts] = useState<DailyRow[]>([])
   const [summary, setSummary] = useState<Summary>({
@@ -134,27 +138,39 @@ export default function CustomerStatsDialog({
                 </Button>
               ))}
             </div>
-            {loyalty.enabled && (
-              <div className="flex gap-1">
-                <Button
-                  size="sm"
-                  variant={!points ? 'default' : 'outline'}
-                  onClick={() => setViewMode('money')}
-                  aria-label="Dinero"
-                  title="Dinero"
-                >
-                  <DollarSign className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant={points ? 'default' : 'outline'}
-                  onClick={() => setViewMode('points')}
-                >
-                  <Star className="mr-1 h-4 w-4" />
-                  Puntos
-                </Button>
-              </div>
-            )}
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant={showPaidDebts ? 'default' : 'outline'}
+                className="gap-1"
+                onClick={() => setShowPaidDebts((v) => !v)}
+                title="Mostrar la tendencia de deudas ya pagadas"
+              >
+                <span className="h-2.5 w-2.5 rounded-sm bg-green-600" />
+                Deudas pagadas
+              </Button>
+              {loyalty.enabled && (
+                <>
+                  <Button
+                    size="sm"
+                    variant={!points ? 'default' : 'outline'}
+                    onClick={() => setViewMode('money')}
+                    aria-label="Dinero"
+                    title="Dinero"
+                  >
+                    <DollarSign className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={points ? 'default' : 'outline'}
+                    onClick={() => setViewMode('points')}
+                  >
+                    <Star className="mr-1 h-4 w-4" />
+                    Puntos
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Totals */}
@@ -177,10 +193,10 @@ export default function CustomerStatsDialog({
           {daily.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart
-                data={daily.map((r) => ({
-                  ...r,
-                  debts: dailyDebts.find((x) => x.day === r.day)?.count ?? 0
-                }))}
+                data={daily.map((r) => {
+                  const d = dailyDebts.find((x) => x.day === r.day)
+                  return { ...r, debts: d?.count ?? 0, paidDebts: d?.paidCount ?? 0 }
+                })}
               >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
@@ -194,7 +210,9 @@ export default function CustomerStatsDialog({
                   formatter={(value: number, _n, item) =>
                     item?.dataKey === 'debts'
                       ? [value, 'Deudas']
-                      : [fmtVal(value), points ? 'Puntos' : 'Total']
+                      : item?.dataKey === 'paidDebts'
+                        ? [value, 'Deudas pagadas']
+                        : [fmtVal(value), points ? 'Puntos' : 'Total']
                   }
                   labelFormatter={(label) => format(new Date(label + 'T00:00:00'), 'dd/MM/yyyy')}
                 />
@@ -213,6 +231,15 @@ export default function CustomerStatsDialog({
                   fill="hsl(0, 72%, 51%)"
                   radius={[4, 4, 0, 0]}
                 />
+                {showPaidDebts && (
+                  <Bar
+                    yAxisId="right"
+                    name="Deudas pagadas"
+                    dataKey="paidDebts"
+                    fill="hsl(142, 71%, 45%)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                )}
               </BarChart>
             </ResponsiveContainer>
           ) : (

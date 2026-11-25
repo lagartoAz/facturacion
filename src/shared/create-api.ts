@@ -129,6 +129,7 @@ export function createApi(invoke: Invoke) {
     getLoyaltyBalance: (customerId: number) => invoke('loyalty:balance', customerId),
     getLoyaltyBalances: () => invoke('loyalty:allBalances'),
     getLoyaltySummaryByCustomer: () => invoke('loyalty:summaryByCustomer'),
+    getLoyaltyLevelsByCustomer: () => invoke('loyalty:levelsByCustomer'),
     getLoyaltyPointsByInvoice: () => invoke('loyalty:pointsByInvoice'),
     getLoyaltyTicketsByInvoice: () => invoke('loyalty:ticketsByInvoice'),
     getInvoiceTickets: (invoiceId: number) => invoke('loyalty:ticketsForInvoice', invoiceId),

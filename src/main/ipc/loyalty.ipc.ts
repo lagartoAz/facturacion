@@ -85,6 +85,7 @@ export function registerLoyaltyHandlers(db: Database.Database): void {
   ipcMain.handle('loyalty:balance', (_event, customerId: number) => service.balance(customerId))
   ipcMain.handle('loyalty:allBalances', () => service.allBalances())
   ipcMain.handle('loyalty:summaryByCustomer', () => service.summaryByCustomer())
+  ipcMain.handle('loyalty:levelsByCustomer', () => service.levelsByCustomer())
   ipcMain.handle('loyalty:pointsByInvoice', () => service.pointsByInvoice())
   ipcMain.handle('loyalty:ticketsByInvoice', () => service.ticketsByInvoice())
 

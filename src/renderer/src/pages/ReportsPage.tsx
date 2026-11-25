@@ -21,18 +21,24 @@ interface DailySale {
   day: string
   total: number
   count: number
+  paidCount?: number
+  paidTotal?: number
 }
 
 interface HourlySale {
   hour: string
   total: number
   count: number
+  paidCount?: number
+  paidTotal?: number
 }
 
 interface MonthlySale {
   month: string
   total: number
   count: number
+  paidCount?: number
+  paidTotal?: number
 }
 
 interface TopProduct {
@@ -60,6 +66,9 @@ export default function ReportsPage(): JSX.Element {
   const [monthlyDebts, setMonthlyDebts] = useState<MonthlySale[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [showAllProducts, setShowAllProducts] = useState(false)
+  // Off by default: a green bar overlaying the trend of already-paid debts, so
+  // it can be compared against the outstanding (red) ones.
+  const [showPaidDebts, setShowPaidDebts] = useState(false)
   const [viewMode, setViewMode] = useState<'money' | 'points'>('money')
   const [summary, setSummary] = useState<Summary>({
     total_revenue: 0,
@@ -128,11 +137,19 @@ export default function ReportsPage(): JSX.Element {
     setMonthlyDebts(debtsMonth as MonthlySale[])
   }
 
-  // Lookup maps: how many debts (credit invoices) in each time bucket.
+  // Lookup maps: how many *unpaid* debts (and, separately, settled ones) sit in
+  // each time bucket. Paid-off debts no longer show in the red `debts` series.
   const debtsByDay = new Map(dailyDebts.map((d) => [d.day, d.count]))
   const debtsByHour = new Map(hourlyDebts.map((d) => [parseInt(d.hour, 10), d.count]))
   const debtsByMonth = new Map(monthlyDebts.map((d) => [d.month, d.count]))
-  const dailyChartData = dailySales.map((s) => ({ ...s, debts: debtsByDay.get(s.day) ?? 0 }))
+  const paidByDay = new Map(dailyDebts.map((d) => [d.day, d.paidCount ?? 0]))
+  const paidByHour = new Map(hourlyDebts.map((d) => [parseInt(d.hour, 10), d.paidCount ?? 0]))
+  const paidByMonth = new Map(monthlyDebts.map((d) => [d.month, d.paidCount ?? 0]))
+  const dailyChartData = dailySales.map((s) => ({
+    ...s,
+    debts: debtsByDay.get(s.day) ?? 0,
+    paidDebts: paidByDay.get(s.day) ?? 0
+  }))
 
   // Fill the gaps between the first and last hour with sales so the bars sit on
   // a continuous timeline (e.g. 08:00 → 20:00) instead of skipping empty hours.
@@ -142,27 +159,33 @@ export default function ReportsPage(): JSX.Element {
     const min = Math.min(...hours)
     const max = Math.max(...hours)
     const byHour = new Map(hourlySales.map((h) => [parseInt(h.hour, 10), h]))
-    const filled: (HourlySale & { debts: number })[] = []
+    const filled: (HourlySale & { debts: number; paidDebts: number })[] = []
     for (let h = min; h <= max; h++) {
       const label = String(h).padStart(2, '0')
       const base = byHour.get(h) ?? { hour: label, total: 0, count: 0 }
-      filled.push({ ...base, debts: debtsByHour.get(h) ?? 0 })
+      filled.push({ ...base, debts: debtsByHour.get(h) ?? 0, paidDebts: paidByHour.get(h) ?? 0 })
     }
     return filled
   })()
 
   // 12 month slots ending this month, zero-filled, with Spanish labels.
   const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-  const monthlyChartData = ((): { label: string; total: number; debts: number }[] => {
+  const monthlyChartData = ((): {
+    label: string
+    total: number
+    debts: number
+    paidDebts: number
+  }[] => {
     const byMonth = new Map(monthlySales.map((m) => [m.month, m.total]))
-    const out: { label: string; total: number; debts: number }[] = []
+    const out: { label: string; total: number; debts: number; paidDebts: number }[] = []
     for (let i = 11; i >= 0; i--) {
       const d = subMonths(new Date(), i)
       const key = format(d, 'yyyy-MM')
       out.push({
         label: `${MESES[d.getMonth()]} ${key.slice(2, 4)}`,
         total: byMonth.get(key) ?? 0,
-        debts: debtsByMonth.get(key) ?? 0
+        debts: debtsByMonth.get(key) ?? 0,
+        paidDebts: paidByMonth.get(key) ?? 0
       })
     }
     return out
@@ -320,11 +343,21 @@ export default function ReportsPage(): JSX.Element {
 
       {/* Sales chart — by hour for a single day, by date for a range */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-lg">
             {(points ? 'Puntos' : 'Ventas') +
               (chartMode === 'hour' ? ' por Hora' : chartMode === 'month' ? ' por Mes' : chartMode === 'day' ? ' Diarias' : '')}
           </CardTitle>
+          <Button
+            size="sm"
+            variant={showPaidDebts ? 'default' : 'outline'}
+            className="gap-1"
+            onClick={() => setShowPaidDebts((v) => !v)}
+            title="Mostrar la tendencia de deudas ya pagadas"
+          >
+            <span className="h-2.5 w-2.5 rounded-sm bg-green-600" />
+            Deudas pagadas
+          </Button>
         </CardHeader>
         <CardContent>
           {chartMode === 'month' ? (
@@ -344,7 +377,9 @@ export default function ReportsPage(): JSX.Element {
                     formatter={(value: number, _n, item) =>
                       item?.dataKey === 'debts'
                         ? [value, 'Deudas']
-                        : [fmtVal(value), points ? 'Puntos' : 'Total']
+                        : item?.dataKey === 'paidDebts'
+                          ? [value, 'Deudas pagadas']
+                          : [fmtVal(value), points ? 'Puntos' : 'Total']
                     }
                   />
                   <Legend />
@@ -362,6 +397,15 @@ export default function ReportsPage(): JSX.Element {
                     fill="hsl(0, 72%, 51%)"
                     radius={[4, 4, 0, 0]}
                   />
+                  {showPaidDebts && (
+                    <Bar
+                      yAxisId="right"
+                      name="Deudas pagadas"
+                      dataKey="paidDebts"
+                      fill="hsl(142, 71%, 45%)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -391,7 +435,9 @@ export default function ReportsPage(): JSX.Element {
                     formatter={(value: number, _n, item) =>
                       item?.dataKey === 'debts'
                         ? [value, 'Deudas']
-                        : [fmtVal(value), points ? 'Puntos' : 'Total']
+                        : item?.dataKey === 'paidDebts'
+                          ? [value, 'Deudas pagadas']
+                          : [fmtVal(value), points ? 'Puntos' : 'Total']
                     }
                     labelFormatter={(label) => `${label}:00 - ${label}:59`}
                   />
@@ -410,6 +456,15 @@ export default function ReportsPage(): JSX.Element {
                     fill="hsl(0, 72%, 51%)"
                     radius={[4, 4, 0, 0]}
                   />
+                  {showPaidDebts && (
+                    <Bar
+                      yAxisId="right"
+                      name="Deudas pagadas"
+                      dataKey="paidDebts"
+                      fill="hsl(142, 71%, 45%)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -432,7 +487,9 @@ export default function ReportsPage(): JSX.Element {
                   formatter={(value: number, _n, item) =>
                     item?.dataKey === 'debts'
                       ? [value, 'Deudas']
-                      : [fmtVal(value), points ? 'Puntos' : 'Total']
+                      : item?.dataKey === 'paidDebts'
+                        ? [value, 'Deudas pagadas']
+                        : [fmtVal(value), points ? 'Puntos' : 'Total']
                   }
                   labelFormatter={(label) => format(new Date(label + 'T00:00:00'), 'dd/MM/yyyy')}
                 />
@@ -451,6 +508,15 @@ export default function ReportsPage(): JSX.Element {
                   fill="hsl(0, 72%, 51%)"
                   radius={[4, 4, 0, 0]}
                 />
+                {showPaidDebts && (
+                  <Bar
+                    yAxisId="right"
+                    name="Deudas pagadas"
+                    dataKey="paidDebts"
+                    fill="hsl(142, 71%, 45%)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                )}
               </BarChart>
             </ResponsiveContainer>
           ) : (

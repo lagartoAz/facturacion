@@ -66,6 +66,7 @@ export const PROXIED_CHANNELS: string[] = [
   'loyalty:balance',
   'loyalty:allBalances',
   'loyalty:summaryByCustomer',
+  'loyalty:levelsByCustomer',
   'loyalty:pointsByInvoice',
   'loyalty:ticketsByInvoice',
   'loyalty:ticketsForInvoice',

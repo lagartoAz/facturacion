@@ -12,7 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency'
-import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft, Star, Ticket, BarChart3 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft, Star, Ticket, BarChart3, Award } from 'lucide-react'
 import { format } from 'date-fns'
 import { useLoyalty } from '@/hooks/useLoyalty'
 import CustomerStatsDialog from '@/components/CustomerStatsDialog'
@@ -87,6 +87,11 @@ export default function CustomersPage(): JSX.Element {
   const [loyaltySummary, setLoyaltySummary] = useState<
     Record<number, { points: number; entries: number }>
   >({})
+  const [levels, setLevels] = useState<
+    Record<number, { name: string; color: string | null; rank: number }>
+  >({})
+  // When on, the list shows the highest-level customers first.
+  const [sortByLevel, setSortByLevel] = useState(false)
   const [statsCustomer, setStatsCustomer] = useState<{ id: number; name: string } | null>(null)
   const [criticalThreshold, setCriticalThreshold] = useState(40)
   const [debtDialogOpen, setDebtDialogOpen] = useState(false)
@@ -120,20 +125,27 @@ export default function CustomersPage(): JSX.Element {
   useEffect(() => {
     if (!loyalty.enabled) {
       setLoyaltySummary({})
+      setLevels({})
+      setSortByLevel(false)
       return
     }
     void (async () => {
-      const s = (await window.api.getLoyaltySummaryByCustomer()) as Record<
-        number,
-        { points: number; entries: number }
-      >
+      const [s, lv] = await Promise.all([
+        window.api.getLoyaltySummaryByCustomer() as Promise<
+          Record<number, { points: number; entries: number }>
+        >,
+        window.api.getLoyaltyLevelsByCustomer() as Promise<
+          Record<number, { name: string; color: string | null; rank: number }>
+        >
+      ])
       setLoyaltySummary(s)
+      setLevels(lv)
     })()
   }, [loyalty.enabled])
 
   useEffect(() => {
     setCustomerPage(1)
-  }, [search, debtFilter])
+  }, [search, debtFilter, sortByLevel])
 
   useEffect(() => {
     loadCustomers()
@@ -296,6 +308,21 @@ export default function CustomersPage(): JSX.Element {
     return { label: `Debe ${formatUSD(balance)}`, variant: 'destructive' }
   }
 
+  // Small colored chip showing the customer's loyalty level, if any.
+  function levelChip(customerId: number): JSX.Element | null {
+    const lv = levels[customerId]
+    if (!lv) return null
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+        style={lv.color ? { color: lv.color, borderColor: lv.color } : undefined}
+      >
+        <Award className="h-3 w-3" />
+        {lv.name}
+      </span>
+    )
+  }
+
   function updateForm(field: string, value: string): void {
     setForm((f) => ({ ...f, [field]: value }))
   }
@@ -347,6 +374,18 @@ export default function CustomersPage(): JSX.Element {
             </Button>
           ))}
         </div>
+        {loyalty.enabled && Object.keys(levels).length > 0 && (
+          <Button
+            size="sm"
+            variant={sortByLevel ? 'default' : 'outline'}
+            className="gap-1"
+            onClick={() => setSortByLevel((v) => !v)}
+            title="Ordenar: mayor nivel primero"
+          >
+            <Award className="h-4 w-4" />
+            Por nivel
+          </Button>
+        )}
       </div>
 
       {(() => {
@@ -357,6 +396,14 @@ export default function CustomersPage(): JSX.Element {
           if (debtFilter === 'extreme') return bal > criticalThreshold
           return true
         })
+        if (sortByLevel) {
+          // Highest level first; customers without a level drop to the bottom.
+          filtered.sort(
+            (a, b) =>
+              (levels[b.id]?.rank ?? -1) - (levels[a.id]?.rank ?? -1) ||
+              a.name.localeCompare(b.name)
+          )
+        }
         const totalPages = Math.ceil(filtered.length / CUSTOMER_PAGE_SIZE)
         const page = Math.min(customerPage, totalPages || 1)
         const paged = filtered.slice((page - 1) * CUSTOMER_PAGE_SIZE, page * CUSTOMER_PAGE_SIZE)
@@ -382,7 +429,12 @@ export default function CustomersPage(): JSX.Element {
                 <tbody>
                   {paged.map((c) => (
                     <tr key={c.id} className="border-t hover:bg-muted/30">
-                      <td className="p-3 font-medium">{c.name}</td>
+                      <td className="p-3 font-medium">
+                        <div className="flex flex-col gap-1">
+                          <span>{c.name}</span>
+                          {levelChip(c.id)}
+                        </div>
+                      </td>
                       <td className="p-3">{c.id_rif || '-'}</td>
                       <td className="p-3">{c.phone || '-'}</td>
                       <td className="p-3">{c.email || '-'}</td>
@@ -440,7 +492,10 @@ export default function CustomersPage(): JSX.Element {
                 return (
                   <div key={c.id} className="border rounded-lg p-3 space-y-2">
                     <div className="flex justify-between items-start">
-                      <span className="font-medium">{c.name}</span>
+                      <div className="flex flex-col gap-1">
+                        <span className="font-medium">{c.name}</span>
+                        {levelChip(c.id)}
+                      </div>
                       <Badge variant={badge.variant} className={badge.className}>{badge.label}</Badge>
                     </div>
                     <div className="flex justify-between text-xs">
