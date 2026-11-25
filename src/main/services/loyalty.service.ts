@@ -39,6 +39,8 @@ export interface LoyaltyConfig {
   raffle_animation: string // 'ruleta' | 'minimal'
   tickets_enabled: boolean // physical printable tickets
   winner_template: string
+  show_reward_on_receipt: boolean // print earned points/tickets on the sale receipt
+  show_raffle_on_receipt: boolean // print the active raffle name on the sale receipt
 }
 
 // Whether points / tickets are active under the current mode.
@@ -207,7 +209,9 @@ export class LoyaltyService {
       exclude_red_debtors: this.get('loyalty_exclude_red_debtors', '0') === '1',
       raffle_animation: this.get('loyalty_raffle_animation', 'ruleta'),
       tickets_enabled: this.get('loyalty_tickets_enabled', '0') === '1',
-      winner_template: this.get('loyalty_winner_template', '')
+      winner_template: this.get('loyalty_winner_template', ''),
+      show_reward_on_receipt: this.get('loyalty_show_reward_on_receipt', '1') === '1',
+      show_raffle_on_receipt: this.get('loyalty_show_raffle_on_receipt', '1') === '1'
     }
   }
 
@@ -261,7 +265,11 @@ export class LoyaltyService {
       loyalty_tickets_enabled:
         cfg.tickets_enabled === undefined ? undefined : bool(cfg.tickets_enabled),
       loyalty_winner_template:
-        cfg.winner_template === undefined ? undefined : cfg.winner_template
+        cfg.winner_template === undefined ? undefined : cfg.winner_template,
+      loyalty_show_reward_on_receipt:
+        cfg.show_reward_on_receipt === undefined ? undefined : bool(cfg.show_reward_on_receipt),
+      loyalty_show_raffle_on_receipt:
+        cfg.show_raffle_on_receipt === undefined ? undefined : bool(cfg.show_raffle_on_receipt)
     }
     for (const [k, v] of Object.entries(map)) {
       if (v !== undefined) this.set(k, v)
@@ -314,6 +322,19 @@ export class LoyaltyService {
       .all() as { invoice_id: number; pts: number }[]
     const out: Record<number, number> = {}
     for (const r of rows) out[r.invoice_id] = r.pts
+    return out
+  }
+
+  // Raffle tickets granted by each invoice (earn rows only), keyed by invoice id.
+  // These already honour the per-invoice cap applied when the sale was closed.
+  ticketsByInvoice(): Record<number, number> {
+    const rows = this.db
+      .prepare(
+        "SELECT invoice_id, COALESCE(SUM(tickets), 0) as t FROM loyalty_tickets_ledger WHERE type = 'earn' AND invoice_id IS NOT NULL GROUP BY invoice_id"
+      )
+      .all() as { invoice_id: number; t: number }[]
+    const out: Record<number, number> = {}
+    for (const r of rows) out[r.invoice_id] = r.t
     return out
   }
 
@@ -388,6 +409,71 @@ export class LoyaltyService {
     return (this.db.prepare('SELECT invoice_id FROM loyalty_ticket_prints').all() as {
       invoice_id: number
     }[]).map((r) => r.invoice_id)
+  }
+
+  // Earned raffle tickets grouped by invoice, with their print status. Feeds the
+  // loyalty "tickets ganados" view (newest first).
+  earnedTicketsReport(): {
+    invoice_id: number
+    invoice_number: string
+    customer_name: string | null
+    created_at: string
+    tickets: number
+    printed: boolean
+  }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT t.invoice_id as invoice_id, i.invoice_number as invoice_number,
+                c.name as customer_name, i.created_at as created_at,
+                COALESCE(SUM(t.tickets), 0) as tickets,
+                CASE WHEN p.invoice_id IS NULL THEN 0 ELSE 1 END as printed
+         FROM loyalty_tickets_ledger t
+         JOIN invoices i ON i.id = t.invoice_id
+         LEFT JOIN customers c ON c.id = i.customer_id
+         LEFT JOIN loyalty_ticket_prints p ON p.invoice_id = t.invoice_id
+         WHERE t.type = 'earn' AND t.invoice_id IS NOT NULL
+         GROUP BY t.invoice_id
+         HAVING tickets > 0
+         ORDER BY i.id DESC`
+      )
+      .all() as {
+      invoice_id: number
+      invoice_number: string
+      customer_name: string | null
+      created_at: string
+      tickets: number
+      printed: number
+    }[]
+    return rows.map((r) => ({ ...r, printed: !!r.printed }))
+  }
+
+  // Point redemptions (type 'redeem'), newest first, for the history view.
+  redemptionsReport(limit = 200): {
+    id: number
+    customer_id: number
+    customer_name: string | null
+    points: number
+    note: string | null
+    created_at: string
+  }[] {
+    return this.db
+      .prepare(
+        `SELECT l.id as id, l.customer_id as customer_id, c.name as customer_name,
+                l.points as points, l.note as note, l.created_at as created_at
+         FROM loyalty_ledger l
+         LEFT JOIN customers c ON c.id = l.customer_id
+         WHERE l.type = 'redeem'
+         ORDER BY l.id DESC
+         LIMIT ?`
+      )
+      .all(limit) as {
+      id: number
+      customer_id: number
+      customer_name: string | null
+      points: number
+      note: string | null
+      created_at: string
+    }[]
   }
 
   // ---- Points-based reporting (mirror of money reports, in points) ----------
@@ -1130,6 +1216,112 @@ export class LoyaltyService {
     })
     tx()
     return winner
+  }
+
+  // "Redo" a drawn raffle: give back the tickets that were spent (undo the
+  // expiration this draw created) and reopen it so a new winner can be drawn.
+  // Points-only raffles expire nothing, so only the status/winner reset applies.
+  redrawRaffle(raffleId: number): Raffle {
+    const raffle = this.db
+      .prepare('SELECT * FROM loyalty_raffles WHERE id = ?')
+      .get(raffleId) as Raffle | undefined
+    if (!raffle) throw new Error('Rifa no encontrada')
+    if (raffle.status !== 'drawn') throw new Error('La rifa no ha sido sorteada todavía')
+    if (raffle.kind === 'general') {
+      const open = this.db
+        .prepare("SELECT id FROM loyalty_raffles WHERE status = 'open' AND kind = 'general'")
+        .get()
+      if (open) throw new Error('Ya hay una rifa abierta. Ciérrala antes de rehacer esta.')
+    }
+    const tx = this.db.transaction(() => {
+      // Remove the expiration rows this draw inserted, returning those tickets
+      // to each customer's balance. Scope mirrors expireRaffleTickets().
+      const conds = ["type = 'expire'"]
+      const args: unknown[] = []
+      if (raffle.kind === 'level') {
+        conds.push('raffle_id = ?')
+        args.push(raffle.id)
+      } else {
+        conds.push('raffle_id IS NULL', 'note = ?')
+        args.push(`Rifa: ${raffle.name}`)
+      }
+      if (raffle.drawn_at) {
+        conds.push('created_at >= ?')
+        args.push(raffle.drawn_at)
+      }
+      this.db
+        .prepare(`DELETE FROM loyalty_tickets_ledger WHERE ${conds.join(' AND ')}`)
+        .run(...args)
+      this.db
+        .prepare(
+          "UPDATE loyalty_raffles SET status = 'open', winner_customer_id = NULL, winner_name = NULL, drawn_at = NULL WHERE id = ?"
+        )
+        .run(raffleId)
+    })
+    tx()
+    return this.db
+      .prepare('SELECT * FROM loyalty_raffles WHERE id = ?')
+      .get(raffleId) as Raffle
+  }
+
+  // Create a one-off raffle exclusive to a customer level. Unlike the automatic
+  // monthly level raffle, this does NOT require tickets: it seeds the customers
+  // currently at that level as participants (1 entry each), and the operator can
+  // add/remove participants by hand afterwards. period is left NULL so it never
+  // collides with the auto monthly raffle (which keys on level_id + YYYY-MM).
+  createLevelRaffle(name: string, levelId: number): Raffle {
+    const level = this.listLevels().find((l) => l.id === levelId)
+    if (!level) throw new Error('Nivel no encontrado')
+    const info = this.db
+      .prepare(
+        "INSERT INTO loyalty_raffles (name, points_per_entry, min_points, kind, level_id, period) VALUES (?, 0, 0, 'level', ?, NULL)"
+      )
+      .run(name.trim() || `Rifa ${level.name}`, levelId)
+    const raffleId = Number(info.lastInsertRowid)
+    const tx = this.db.transaction(() => {
+      const ins = this.db.prepare(
+        "INSERT INTO loyalty_tickets_ledger (customer_id, invoice_id, raffle_id, tickets, type, note) VALUES (?, NULL, ?, 1, 'adjust', ?)"
+      )
+      for (const m of this.membersOfLevel(levelId)) {
+        ins.run(m.customer_id, raffleId, `Miembro ${level.name}`)
+      }
+    })
+    tx()
+    return this.db.prepare('SELECT * FROM loyalty_raffles WHERE id = ?').get(raffleId) as Raffle
+  }
+
+  // Add a customer to a level raffle as a single participation (idempotent).
+  addRaffleParticipant(raffleId: number, customerId: number): void {
+    const raffle = this.db
+      .prepare('SELECT * FROM loyalty_raffles WHERE id = ?')
+      .get(raffleId) as Raffle | undefined
+    if (!raffle) throw new Error('Rifa no encontrada')
+    if (raffle.kind !== 'level') throw new Error('Solo las rifas por nivel admiten participantes manuales')
+    if (raffle.status !== 'open') throw new Error('La rifa ya fue sorteada')
+    const bal = this.db
+      .prepare(
+        'SELECT COALESCE(SUM(tickets), 0) as b FROM loyalty_tickets_ledger WHERE raffle_id = ? AND customer_id = ?'
+      )
+      .get(raffleId, customerId) as { b: number }
+    if (bal.b > 0) return
+    this.db
+      .prepare(
+        "INSERT INTO loyalty_tickets_ledger (customer_id, invoice_id, raffle_id, tickets, type, note) VALUES (?, NULL, ?, 1, 'adjust', 'Agregado manualmente')"
+      )
+      .run(customerId, raffleId)
+  }
+
+  // Remove a customer from a level raffle (drops all their ledger rows for it).
+  removeRaffleParticipant(raffleId: number, customerId: number): void {
+    const raffle = this.db
+      .prepare('SELECT * FROM loyalty_raffles WHERE id = ?')
+      .get(raffleId) as Raffle | undefined
+    if (!raffle) throw new Error('Rifa no encontrada')
+    if (raffle.kind !== 'level') throw new Error('Solo las rifas por nivel admiten participantes manuales')
+    if (raffle.status !== 'open') throw new Error('La rifa ya fue sorteada')
+    this.db
+      .prepare('DELETE FROM loyalty_tickets_ledger WHERE raffle_id = ? AND customer_id = ?')
+      .run(raffleId, customerId)
   }
 
   // ---- Monthly level benefits (idempotent per YYYY-MM) -----------------------

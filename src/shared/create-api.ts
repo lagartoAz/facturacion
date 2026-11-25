@@ -99,6 +99,12 @@ export function createApi(invoke: Invoke) {
       invoke('reports:summary', from, to, customerId),
     getMonthlySales: (from: string, to: string, customerId?: number) =>
       invoke('reports:monthlySales', from, to, customerId),
+    getDailyDebts: (from: string, to: string, customerId?: number) =>
+      invoke('reports:dailyDebts', from, to, customerId),
+    getHourlyDebts: (day: string, customerId?: number) =>
+      invoke('reports:hourlyDebts', day, customerId),
+    getMonthlyDebts: (from: string, to: string, customerId?: number) =>
+      invoke('reports:monthlyDebts', from, to, customerId),
     getProductStats: (productId: number) => invoke('reports:productStats', productId),
 
     // Loyalty points add-on ("Fidelidad")
@@ -124,9 +130,12 @@ export function createApi(invoke: Invoke) {
     getLoyaltyBalances: () => invoke('loyalty:allBalances'),
     getLoyaltySummaryByCustomer: () => invoke('loyalty:summaryByCustomer'),
     getLoyaltyPointsByInvoice: () => invoke('loyalty:pointsByInvoice'),
+    getLoyaltyTicketsByInvoice: () => invoke('loyalty:ticketsByInvoice'),
     getInvoiceTickets: (invoiceId: number) => invoke('loyalty:ticketsForInvoice', invoiceId),
     markTicketsPrinted: (invoiceId: number) => invoke('loyalty:markTicketsPrinted', invoiceId),
     getTicketsPrintedIds: () => invoke('loyalty:ticketsPrintedIds'),
+    getEarnedTicketsReport: () => invoke('loyalty:earnedTicketsReport'),
+    getRedemptionsReport: (limit?: number) => invoke('loyalty:redemptionsReport', limit),
     getLoyaltyHistory: (customerId: number, limit?: number) =>
       invoke('loyalty:history', customerId, limit),
     redeemLoyaltyPoints: (customerId: number, points: number, note?: string) =>
@@ -170,6 +179,13 @@ export function createApi(invoke: Invoke) {
     deleteRaffle: (id: number) => invoke('loyalty:deleteRaffle', id),
     getRaffleParticipants: (raffleId: number) => invoke('loyalty:raffleParticipants', raffleId),
     drawRaffle: (raffleId: number, rand: number) => invoke('loyalty:drawRaffle', raffleId, rand),
+    redrawRaffle: (raffleId: number) => invoke('loyalty:redrawRaffle', raffleId),
+    createLevelRaffle: (name: string, levelId: number) =>
+      invoke('loyalty:createLevelRaffle', name, levelId),
+    addRaffleParticipant: (raffleId: number, customerId: number) =>
+      invoke('loyalty:addRaffleParticipant', raffleId, customerId),
+    removeRaffleParticipant: (raffleId: number, customerId: number) =>
+      invoke('loyalty:removeRaffleParticipant', raffleId, customerId),
 
     // Settings & Exchange Rates
     getExchangeRates: () => invoke('settings:getRates'),

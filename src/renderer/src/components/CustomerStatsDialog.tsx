@@ -8,7 +8,16 @@ import {
 import { Button } from '@/components/ui/button'
 import { formatUSD } from '@/lib/currency'
 import { format, subDays, startOfYear, endOfYear } from 'date-fns'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from 'recharts'
 import { DollarSign, Star, Ticket } from 'lucide-react'
 import { useLoyalty } from '@/hooks/useLoyalty'
 
@@ -45,6 +54,7 @@ export default function CustomerStatsDialog({
   const [range, setRange] = useState<'30' | '90' | 'year'>('30')
   const [viewMode, setViewMode] = useState<'money' | 'points'>('money')
   const [daily, setDaily] = useState<DailyRow[]>([])
+  const [dailyDebts, setDailyDebts] = useState<DailyRow[]>([])
   const [summary, setSummary] = useState<Summary>({
     total_revenue: 0,
     total_invoices: 0,
@@ -66,16 +76,18 @@ export default function CustomerStatsDialog({
     const toEnd = range === 'year' ? format(endOfYear(new Date()), 'yyyy-MM-dd') : to
 
     void (async () => {
-      const [d, s] = await Promise.all([
+      const [d, s, debts] = await Promise.all([
         points
           ? window.api.getLoyaltyDailyPoints(from, toEnd, customer.id)
           : window.api.getDailySales(from, toEnd, customer.id),
         points
           ? window.api.getLoyaltyPointsSummary(from, toEnd, customer.id)
-          : window.api.getSalesSummary(from, toEnd, customer.id)
+          : window.api.getSalesSummary(from, toEnd, customer.id),
+        window.api.getDailyDebts(from, toEnd, customer.id)
       ])
       setDaily(d as DailyRow[])
       setSummary(s as Summary)
+      setDailyDebts(debts as DailyRow[])
     })()
   }, [open, customer, range, viewMode, points])
 
@@ -128,9 +140,10 @@ export default function CustomerStatsDialog({
                   size="sm"
                   variant={!points ? 'default' : 'outline'}
                   onClick={() => setViewMode('money')}
+                  aria-label="Dinero"
+                  title="Dinero"
                 >
-                  <DollarSign className="mr-1 h-4 w-4" />
-                  Dinero
+                  <DollarSign className="h-4 w-4" />
                 </Button>
                 <Button
                   size="sm"
@@ -163,19 +176,43 @@ export default function CustomerStatsDialog({
           {/* Daily bar chart */}
           {daily.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={daily}>
+              <BarChart
+                data={daily.map((r) => ({
+                  ...r,
+                  debts: dailyDebts.find((x) => x.day === r.day)?.count ?? 0
+                }))}
+              >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="day"
                   tickFormatter={(v) => format(new Date(v + 'T00:00:00'), 'dd/MM')}
                   fontSize={11}
                 />
-                <YAxis fontSize={11} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
+                <YAxis yAxisId="left" fontSize={11} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
+                <YAxis yAxisId="right" orientation="right" allowDecimals={false} fontSize={11} />
                 <Tooltip
-                  formatter={(value: number) => [fmtVal(value), points ? 'Puntos' : 'Total']}
+                  formatter={(value: number, _n, item) =>
+                    item?.dataKey === 'debts'
+                      ? [value, 'Deudas']
+                      : [fmtVal(value), points ? 'Puntos' : 'Total']
+                  }
                   labelFormatter={(label) => format(new Date(label + 'T00:00:00'), 'dd/MM/yyyy')}
                 />
-                <Bar dataKey="total" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
+                <Legend />
+                <Bar
+                  yAxisId="left"
+                  name={points ? 'Puntos' : 'Ventas'}
+                  dataKey="total"
+                  fill="hsl(221.2, 83.2%, 53.3%)"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  yAxisId="right"
+                  name="Deudas"
+                  dataKey="debts"
+                  fill="hsl(0, 72%, 51%)"
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           ) : (

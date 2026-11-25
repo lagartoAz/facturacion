@@ -23,5 +23,6 @@ export interface ReceiptData {
   totalText: string // pre-formatted grand total
   footerTitle?: string // e.g. "Compra en Mi Tienda"
   paymentLines: ReceiptLine[] // currency breakdown / amount paid
+  loyaltyLines?: string[] // loyalty notes: points/tickets earned, active raffle name
   thanks?: string // e.g. "Gracias por su compra!"
 }

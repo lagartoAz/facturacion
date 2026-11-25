@@ -11,6 +11,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer
 } from 'recharts'
 import { TrendingUp, FileText, DollarSign, List, Trophy, Star } from 'lucide-react'
@@ -54,6 +55,9 @@ export default function ReportsPage(): JSX.Element {
   const [dailySales, setDailySales] = useState<DailySale[]>([])
   const [hourlySales, setHourlySales] = useState<HourlySale[]>([])
   const [monthlySales, setMonthlySales] = useState<MonthlySale[]>([])
+  const [dailyDebts, setDailyDebts] = useState<DailySale[]>([])
+  const [hourlyDebts, setHourlyDebts] = useState<HourlySale[]>([])
+  const [monthlyDebts, setMonthlyDebts] = useState<MonthlySale[]>([])
   const [topProducts, setTopProducts] = useState<TopProduct[]>([])
   const [showAllProducts, setShowAllProducts] = useState(false)
   const [viewMode, setViewMode] = useState<'money' | 'points'>('money')
@@ -84,35 +88,51 @@ export default function ReportsPage(): JSX.Element {
     // Rolling 12-month window ending this month, for the monthly chart.
     const monthFrom = format(startOfMonth(subMonths(new Date(), 11)), 'yyyy-MM-dd')
     const monthTo = format(endOfMonth(new Date()), 'yyyy-MM-dd')
-    const [sales, hourly, monthly, products, sum] = await Promise.all([
-      chartMode === 'day'
-        ? viewMode === 'points'
-          ? window.api.getLoyaltyDailyPoints(dateFrom, dateTo)
-          : window.api.getDailySales(dateFrom, dateTo)
-        : Promise.resolve([]),
-      chartMode === 'hour'
-        ? viewMode === 'points'
-          ? window.api.getLoyaltyHourlyPoints(dateFrom)
-          : window.api.getHourlySales(dateFrom)
-        : Promise.resolve([]),
-      chartMode === 'month'
-        ? viewMode === 'points'
-          ? window.api.getLoyaltyMonthlyPoints(monthFrom, monthTo)
-          : window.api.getMonthlySales(monthFrom, monthTo)
-        : Promise.resolve([]),
-      viewMode === 'points'
-        ? window.api.getLoyaltyTopProductsByPoints(dateFrom, dateTo, limit)
-        : window.api.getTopProducts(dateFrom, dateTo, limit),
-      viewMode === 'points'
-        ? window.api.getLoyaltyPointsSummary(dateFrom, dateTo)
-        : window.api.getSalesSummary(dateFrom, dateTo)
-    ])
+    const [sales, hourly, monthly, products, sum, debtsDay, debtsHour, debtsMonth] =
+      await Promise.all([
+        chartMode === 'day'
+          ? viewMode === 'points'
+            ? window.api.getLoyaltyDailyPoints(dateFrom, dateTo)
+            : window.api.getDailySales(dateFrom, dateTo)
+          : Promise.resolve([]),
+        chartMode === 'hour'
+          ? viewMode === 'points'
+            ? window.api.getLoyaltyHourlyPoints(dateFrom)
+            : window.api.getHourlySales(dateFrom)
+          : Promise.resolve([]),
+        chartMode === 'month'
+          ? viewMode === 'points'
+            ? window.api.getLoyaltyMonthlyPoints(monthFrom, monthTo)
+            : window.api.getMonthlySales(monthFrom, monthTo)
+          : Promise.resolve([]),
+        viewMode === 'points'
+          ? window.api.getLoyaltyTopProductsByPoints(dateFrom, dateTo, limit)
+          : window.api.getTopProducts(dateFrom, dateTo, limit),
+        viewMode === 'points'
+          ? window.api.getLoyaltyPointsSummary(dateFrom, dateTo)
+          : window.api.getSalesSummary(dateFrom, dateTo),
+        // Debts (credit invoices) are independent of the money/points view.
+        chartMode === 'day' ? window.api.getDailyDebts(dateFrom, dateTo) : Promise.resolve([]),
+        chartMode === 'hour' ? window.api.getHourlyDebts(dateFrom) : Promise.resolve([]),
+        chartMode === 'month'
+          ? window.api.getMonthlyDebts(monthFrom, monthTo)
+          : Promise.resolve([])
+      ])
     setDailySales(sales as DailySale[])
     setHourlySales(hourly as HourlySale[])
     setMonthlySales(monthly as MonthlySale[])
     setTopProducts(products as TopProduct[])
     setSummary(sum as Summary)
+    setDailyDebts(debtsDay as DailySale[])
+    setHourlyDebts(debtsHour as HourlySale[])
+    setMonthlyDebts(debtsMonth as MonthlySale[])
   }
+
+  // Lookup maps: how many debts (credit invoices) in each time bucket.
+  const debtsByDay = new Map(dailyDebts.map((d) => [d.day, d.count]))
+  const debtsByHour = new Map(hourlyDebts.map((d) => [parseInt(d.hour, 10), d.count]))
+  const debtsByMonth = new Map(monthlyDebts.map((d) => [d.month, d.count]))
+  const dailyChartData = dailySales.map((s) => ({ ...s, debts: debtsByDay.get(s.day) ?? 0 }))
 
   // Fill the gaps between the first and last hour with sales so the bars sit on
   // a continuous timeline (e.g. 08:00 → 20:00) instead of skipping empty hours.
@@ -122,23 +142,28 @@ export default function ReportsPage(): JSX.Element {
     const min = Math.min(...hours)
     const max = Math.max(...hours)
     const byHour = new Map(hourlySales.map((h) => [parseInt(h.hour, 10), h]))
-    const filled: HourlySale[] = []
+    const filled: (HourlySale & { debts: number })[] = []
     for (let h = min; h <= max; h++) {
       const label = String(h).padStart(2, '0')
-      filled.push(byHour.get(h) ?? { hour: label, total: 0, count: 0 })
+      const base = byHour.get(h) ?? { hour: label, total: 0, count: 0 }
+      filled.push({ ...base, debts: debtsByHour.get(h) ?? 0 })
     }
     return filled
   })()
 
   // 12 month slots ending this month, zero-filled, with Spanish labels.
   const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
-  const monthlyChartData = ((): { label: string; total: number }[] => {
+  const monthlyChartData = ((): { label: string; total: number; debts: number }[] => {
     const byMonth = new Map(monthlySales.map((m) => [m.month, m.total]))
-    const out: { label: string; total: number }[] = []
+    const out: { label: string; total: number; debts: number }[] = []
     for (let i = 11; i >= 0; i--) {
       const d = subMonths(new Date(), i)
       const key = format(d, 'yyyy-MM')
-      out.push({ label: `${MESES[d.getMonth()]} ${key.slice(2, 4)}`, total: byMonth.get(key) ?? 0 })
+      out.push({
+        label: `${MESES[d.getMonth()]} ${key.slice(2, 4)}`,
+        total: byMonth.get(key) ?? 0,
+        debts: debtsByMonth.get(key) ?? 0
+      })
     }
     return out
   })()
@@ -169,9 +194,10 @@ export default function ReportsPage(): JSX.Element {
               size="sm"
               variant={viewMode === 'money' ? 'default' : 'outline'}
               onClick={() => setViewMode('money')}
+              aria-label="Dinero"
+              title="Dinero"
             >
-              <DollarSign className="mr-1 h-4 w-4" />
-              Dinero
+              <DollarSign className="h-4 w-4" />
             </Button>
             <Button
               size="sm"
@@ -307,11 +333,35 @@ export default function ReportsPage(): JSX.Element {
                 <BarChart data={monthlyChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="label" fontSize={12} />
-                  <YAxis fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
-                  <Tooltip
-                    formatter={(value: number) => [fmtVal(value), points ? 'Puntos' : 'Total']}
+                  <YAxis yAxisId="left" fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    allowDecimals={false}
+                    fontSize={12}
                   />
-                  <Bar dataKey="total" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
+                  <Tooltip
+                    formatter={(value: number, _n, item) =>
+                      item?.dataKey === 'debts'
+                        ? [value, 'Deudas']
+                        : [fmtVal(value), points ? 'Puntos' : 'Total']
+                    }
+                  />
+                  <Legend />
+                  <Bar
+                    yAxisId="left"
+                    name={points ? 'Puntos' : 'Ventas'}
+                    dataKey="total"
+                    fill="hsl(221.2, 83.2%, 53.3%)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    yAxisId="right"
+                    name="Deudas"
+                    dataKey="debts"
+                    fill="hsl(0, 72%, 51%)"
+                    radius={[4, 4, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -330,12 +380,36 @@ export default function ReportsPage(): JSX.Element {
                     fontSize={12}
                     interval={1}
                   />
-                  <YAxis fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
+                  <YAxis yAxisId="left" fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    allowDecimals={false}
+                    fontSize={12}
+                  />
                   <Tooltip
-                    formatter={(value: number) => [fmtVal(value), points ? 'Puntos' : 'Total']}
+                    formatter={(value: number, _n, item) =>
+                      item?.dataKey === 'debts'
+                        ? [value, 'Deudas']
+                        : [fmtVal(value), points ? 'Puntos' : 'Total']
+                    }
                     labelFormatter={(label) => `${label}:00 - ${label}:59`}
                   />
-                  <Bar dataKey="total" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
+                  <Legend />
+                  <Bar
+                    yAxisId="left"
+                    name={points ? 'Puntos' : 'Ventas'}
+                    dataKey="total"
+                    fill="hsl(221.2, 83.2%, 53.3%)"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    yAxisId="right"
+                    name="Deudas"
+                    dataKey="debts"
+                    fill="hsl(0, 72%, 51%)"
+                    radius={[4, 4, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -345,19 +419,38 @@ export default function ReportsPage(): JSX.Element {
             )
           ) : dailySales.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={dailySales}>
+              <BarChart data={dailyChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="day"
                   tickFormatter={(v) => format(new Date(v + 'T00:00:00'), 'dd/MM')}
                   fontSize={12}
                 />
-                <YAxis fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
+                <YAxis yAxisId="left" fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
+                <YAxis yAxisId="right" orientation="right" allowDecimals={false} fontSize={12} />
                 <Tooltip
-                  formatter={(value: number) => [fmtVal(value), points ? 'Puntos' : 'Total']}
+                  formatter={(value: number, _n, item) =>
+                    item?.dataKey === 'debts'
+                      ? [value, 'Deudas']
+                      : [fmtVal(value), points ? 'Puntos' : 'Total']
+                  }
                   labelFormatter={(label) => format(new Date(label + 'T00:00:00'), 'dd/MM/yyyy')}
                 />
-                <Bar dataKey="total" fill="hsl(221.2, 83.2%, 53.3%)" radius={[4, 4, 0, 0]} />
+                <Legend />
+                <Bar
+                  yAxisId="left"
+                  name={points ? 'Puntos' : 'Ventas'}
+                  dataKey="total"
+                  fill="hsl(221.2, 83.2%, 53.3%)"
+                  radius={[4, 4, 0, 0]}
+                />
+                <Bar
+                  yAxisId="right"
+                  name="Deudas"
+                  dataKey="debts"
+                  fill="hsl(0, 72%, 51%)"
+                  radius={[4, 4, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           ) : (

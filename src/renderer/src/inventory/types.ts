@@ -9,6 +9,7 @@ export interface InvProduct {
   min_stock: number
   is_by_weight: number
   is_active?: number
+  has_image?: number
 }
 
 export interface Rate {

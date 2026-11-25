@@ -92,7 +92,11 @@ export class ProductService {
       query += ' AND p.stock > p.min_stock'
     }
 
-    query += ' ORDER BY p.stock ASC, p.name ASC'
+    // "high" lists most-stocked first (DESC); "low"/default keeps least-first (ASC).
+    query +=
+      filters?.stock_level === 'high'
+        ? ' ORDER BY p.stock DESC, p.name ASC'
+        : ' ORDER BY p.stock ASC, p.name ASC'
     const limit = filters?.limit ?? 20
     const page = filters?.page ?? 1
     query += ' LIMIT ? OFFSET ?'

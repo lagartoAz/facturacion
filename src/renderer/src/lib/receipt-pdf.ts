@@ -45,6 +45,10 @@ export async function buildReceiptPdfBase64(r: ReceiptData): Promise<string> {
     if (l.label) rows.push({ center: `${l.label}: ${l.amount}`, size: 8 })
     else rows.push({ center: l.amount, bold: true, size: 9 })
   }
+  if (r.loyaltyLines && r.loyaltyLines.length > 0) {
+    rows.push({ divider: true })
+    for (const l of r.loyaltyLines) rows.push({ center: l, size: 8 })
+  }
   if (r.thanks) rows.push({ center: r.thanks, size: 8 })
 
   const height = M + 3 + rows.length * LH + M

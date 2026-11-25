@@ -59,7 +59,7 @@ import {
   Star
 } from 'lucide-react'
 import { format } from 'date-fns'
-import { useLoyalty } from '@/hooks/useLoyalty'
+import { useLoyalty, pointsActive } from '@/hooks/useLoyalty'
 import { printRaffleTickets } from '@/lib/raffle-tickets'
 
 interface CouponOpt {
@@ -769,6 +769,48 @@ export default function PosPage(): JSX.Element {
     }
   }
 
+  // Builds the loyalty footer lines for a sale receipt (points/tickets earned +
+  // active raffle name), gated by the loyalty config toggles. Empty → omitted.
+  async function buildLoyaltyLines(invId: number): Promise<string[] | undefined> {
+    if (!loyalty.enabled || (!loyalty.show_reward_on_receipt && !loyalty.show_raffle_on_receipt)) {
+      return undefined
+    }
+    const lines: string[] = []
+    let tickets = 0
+    let raffleName: string | null = null
+    if (loyalty.raffle_enabled) {
+      try {
+        const t = (await window.api.getInvoiceTickets(invId)) as {
+          count: number
+          raffleName: string | null
+        }
+        tickets = t?.count ?? 0
+        raffleName = t?.raffleName ?? null
+      } catch {
+        // ignore; just omit the ticket info
+      }
+    }
+    if (loyalty.show_reward_on_receipt) {
+      let points = 0
+      if (pointsActive(loyalty.mode)) {
+        try {
+          const map = (await window.api.getLoyaltyPointsByInvoice()) as Record<number, number>
+          points = map[invId] ?? 0
+        } catch {
+          points = 0
+        }
+      }
+      const parts: string[] = []
+      if (points > 0) parts.push(`${points} pts`)
+      if (tickets > 0) parts.push(`${tickets} ticket(s) de rifa`)
+      if (parts.length) lines.push(`Ganaste ${parts.join(' + ')}`)
+    }
+    if (loyalty.show_raffle_on_receipt && raffleName) {
+      lines.push(`Participas en la rifa: ${raffleName}`)
+    }
+    return lines.length ? lines : undefined
+  }
+
   async function handlePrintInvoice(invoiceArg?: typeof completedInvoice): Promise<void> {
     const inv = invoiceArg ?? completedInvoice
     if (!inv) return
@@ -802,6 +844,13 @@ export default function PosPage(): JSX.Element {
     const fw = settings.receipt_font_weight || '700'
     const rTitle = (settings.receipt_title || '').trim()
     const rm = parseInt(settings.receipt_margin) || 4
+
+    const loyaltyLines = await buildLoyaltyLines(inv.id)
+    const loyaltyHtml = loyaltyLines
+      ? `<div class="divider"></div>${loyaltyLines
+          .map((l) => `<div class="center">${l}</div>`)
+          .join('')}`
+      : ''
 
     const html = `
       <html><head><title>${inv.invoice_number}</title>
@@ -837,6 +886,7 @@ export default function PosPage(): JSX.Element {
         <div class="divider"></div>
         <div class="center label">Compra en ${summary.title}</div>
         ${paymentLinesHtml}
+        ${loyaltyHtml}
         <div class="center" style="margin-top:8px">Gracias por su compra!</div>
       </body></html>
     `
@@ -858,6 +908,7 @@ export default function PosPage(): JSX.Element {
         label: summary.lines.length > 1 ? line.label : '',
         amount: line.amount
       })),
+      loyaltyLines,
       thanks: 'Gracias por su compra!'
     }
 
@@ -921,6 +972,7 @@ export default function PosPage(): JSX.Element {
         label: summary.lines.length > 1 ? line.label : '',
         amount: line.amount
       })),
+      loyaltyLines: await buildLoyaltyLines(inv.id),
       thanks: 'Gracias por su compra!'
     }
   }

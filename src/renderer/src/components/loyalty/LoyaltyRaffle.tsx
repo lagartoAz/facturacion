@@ -10,7 +10,21 @@ import {
   DialogFooter
 } from '@/components/ui/dialog'
 import { useLoyalty, ticketsActive } from '@/hooks/useLoyalty'
-import { Ticket, Trophy, Trash2, Play, PartyPopper, MessageCircle, Copy, Save } from 'lucide-react'
+import {
+  Ticket,
+  Trophy,
+  Trash2,
+  Play,
+  PartyPopper,
+  MessageCircle,
+  Copy,
+  Save,
+  RotateCcw,
+  Users,
+  UserPlus,
+  Search,
+  X
+} from 'lucide-react'
 import RaffleRoulette, { type Participant } from '@/components/RaffleRoulette'
 
 const PLACEHOLDER_HINT = '{nombre}, {rifa}, {tienda}, {fecha}'
@@ -53,6 +67,17 @@ export default function LoyaltyRaffle(): JSX.Element {
   const [msgText, setMsgText] = useState('')
   const [copied, setCopied] = useState(false)
 
+  // Level-exclusive raffle (no tickets): pick a level, auto-seed its members.
+  const [levels, setLevels] = useState<{ id: number; name: string }[]>([])
+  const [levelRaffleName, setLevelRaffleName] = useState('')
+  const [levelRaffleLevel, setLevelRaffleLevel] = useState('')
+
+  // Participant management dialog for a level raffle.
+  const [manageRaffle, setManageRaffle] = useState<Raffle | null>(null)
+  const [manageList, setManageList] = useState<Participant[]>([])
+  const [custSearch, setCustSearch] = useState('')
+  const [custResults, setCustResults] = useState<{ id: number; name: string }[]>([])
+
   useEffect(() => setTemplate(status.winner_template), [status.winner_template])
   useEffect(() => {
     void (async () => {
@@ -78,6 +103,72 @@ export default function LoyaltyRaffle(): JSX.Element {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    void (async () => {
+      setLevels((await window.api.listLoyaltyLevels()) as { id: number; name: string }[])
+    })()
+  }, [])
+
+  // Debounced customer search for the manual "add participant" box.
+  useEffect(() => {
+    if (!manageRaffle) return
+    const t = setTimeout(() => {
+      void window.api
+        .getCustomers(custSearch.trim() || undefined)
+        .then((rows) => setCustResults((rows as { id: number; name: string }[]).slice(0, 25)))
+    }, 250)
+    return () => clearTimeout(t)
+  }, [custSearch, manageRaffle])
+
+  async function createLevelRaffle(): Promise<void> {
+    if (!levelRaffleLevel) {
+      alert('Elige un nivel para la rifa')
+      return
+    }
+    try {
+      await window.api.createLevelRaffle(levelRaffleName.trim(), Number(levelRaffleLevel))
+      setLevelRaffleName('')
+      setLevelRaffleLevel('')
+      await load()
+    } catch (e) {
+      alert((e as Error).message || 'No se pudo crear la rifa por nivel')
+    }
+  }
+
+  async function openManage(r: Raffle): Promise<void> {
+    setManageRaffle(r)
+    setCustSearch('')
+    setManageList((await window.api.getRaffleParticipants(r.id)) as Participant[])
+  }
+
+  async function addParticipant(customerId: number): Promise<void> {
+    if (!manageRaffle) return
+    try {
+      const list = (await window.api.addRaffleParticipant(
+        manageRaffle.id,
+        customerId
+      )) as Participant[]
+      setManageList(list)
+      await load()
+    } catch (e) {
+      alert((e as Error).message || 'No se pudo agregar')
+    }
+  }
+
+  async function removeParticipant(customerId: number): Promise<void> {
+    if (!manageRaffle) return
+    try {
+      const list = (await window.api.removeRaffleParticipant(
+        manageRaffle.id,
+        customerId
+      )) as Participant[]
+      setManageList(list)
+      await load()
+    } catch (e) {
+      alert((e as Error).message || 'No se pudo quitar')
+    }
+  }
 
   useEffect(() => setAnimation(status.raffle_animation), [status.raffle_animation])
 
@@ -167,6 +258,23 @@ export default function LoyaltyRaffle(): JSX.Element {
       setWinnerName(null)
     }
     await load()
+  }
+
+  async function redoRaffle(r: Raffle): Promise<void> {
+    if (
+      !confirm(
+        `¿Rehacer la rifa "${r.name}"? Se devolverán los tickets gastados y podrás sacar un nuevo ganador.`
+      )
+    )
+      return
+    try {
+      await window.api.redrawRaffle(r.id)
+      setWinnerId(null)
+      setWinnerName(null)
+      await load()
+    } catch (e) {
+      alert((e as Error).message || 'No se pudo rehacer la rifa')
+    }
   }
 
   async function drawLevelRaffle(r: Raffle): Promise<void> {
@@ -349,17 +457,63 @@ export default function LoyaltyRaffle(): JSX.Element {
         </Card>
       )}
 
-      {/* Monthly level raffles (auto-created from level benefits) */}
+      {/* Create a level-exclusive raffle (no tickets; auto-seeds the level's members) */}
+      {levels.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Users className="h-5 w-5" />
+              Rifa exclusiva por nivel
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              No usa tickets: al crearla se integran automáticamente los clientes que están en ese
+              nivel. Luego puedes agregar o quitar participantes a mano.
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Nivel</label>
+              <select
+                value={levelRaffleLevel}
+                onChange={(e) => setLevelRaffleLevel(e.target.value)}
+                className="flex h-9 w-44 rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+              >
+                <option value="">Elegir nivel…</option>
+                {levels.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Nombre (opcional)</label>
+              <Input
+                value={levelRaffleName}
+                onChange={(e) => setLevelRaffleName(e.target.value)}
+                placeholder="Ej: Rifa Oro"
+                className="w-48"
+              />
+            </div>
+            <Button onClick={createLevelRaffle} disabled={!levelRaffleLevel}>
+              <Users className="mr-2 h-4 w-4" />
+              Crear rifa por nivel
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Open level raffles (auto-created monthly or created by level above) */}
       {openLevelRaffles.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Ticket className="h-5 w-5" />
-              Rifas mensuales por nivel
+              Rifas por nivel abiertas
             </CardTitle>
             <p className="text-sm text-muted-foreground">
-              Se crean solas cada mes para los niveles con ese beneficio. Cada miembro recibe 1
-              ticket que caduca al sortearla.
+              Incluye las mensuales automáticas y las que creas por nivel. Usa «Participantes» para
+              agregar o quitar clientes antes de sortear.
             </p>
           </CardHeader>
           <CardContent>
@@ -368,8 +522,14 @@ export default function LoyaltyRaffle(): JSX.Element {
                 <div key={r.id} className="flex items-center gap-3 p-3 text-sm">
                   <div className="flex-1">
                     <p className="font-medium">{r.name}</p>
-                    <p className="text-xs text-muted-foreground">Período {r.period}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {r.period ? `Período ${r.period}` : 'Rifa por nivel'}
+                    </p>
                   </div>
+                  <Button variant="outline" size="sm" onClick={() => openManage(r)}>
+                    <Users className="mr-1 h-4 w-4" />
+                    Participantes
+                  </Button>
                   <Button size="sm" onClick={() => drawLevelRaffle(r)}>
                     <Play className="mr-1 h-4 w-4" />
                     Sortear
@@ -417,6 +577,14 @@ export default function LoyaltyRaffle(): JSX.Element {
                       <MessageCircle className="h-4 w-4 text-green-600" />
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Rehacer rifa (devolver tickets y volver a sortear)"
+                    onClick={() => redoRaffle(r)}
+                  >
+                    <RotateCcw className="h-4 w-4 text-blue-600" />
+                  </Button>
                   <Button variant="ghost" size="icon" onClick={() => removeRaffle(r.id)}>
                     <Trash2 className="h-4 w-4 text-red-500" />
                   </Button>
@@ -451,6 +619,85 @@ export default function LoyaltyRaffle(): JSX.Element {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Manage participants of a level raffle */}
+      <Dialog open={!!manageRaffle} onOpenChange={(o) => !o && setManageRaffle(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Participantes · {manageRaffle?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Current participants */}
+            <div>
+              <p className="mb-1 text-xs text-muted-foreground">
+                {manageList.length} participante(s)
+              </p>
+              <div className="max-h-48 divide-y overflow-y-auto rounded-lg border">
+                {manageList.map((p) => (
+                  <div
+                    key={p.customer_id}
+                    className="flex items-center justify-between p-2 text-sm"
+                  >
+                    <span className="truncate">{p.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      title="Quitar"
+                      onClick={() => removeParticipant(p.customer_id)}
+                    >
+                      <X className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                ))}
+                {manageList.length === 0 && (
+                  <p className="p-3 text-center text-xs text-muted-foreground">
+                    Sin participantes todavía
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Add participants */}
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Agregar cliente</label>
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={custSearch}
+                  onChange={(e) => setCustSearch(e.target.value)}
+                  placeholder="Buscar cliente por nombre"
+                  className="pl-8"
+                />
+              </div>
+              <div className="max-h-40 divide-y overflow-y-auto rounded-lg border">
+                {custResults
+                  .filter((c) => !manageList.some((p) => p.customer_id === c.id))
+                  .map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between p-2 text-sm"
+                    >
+                      <span className="truncate">{c.name}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Agregar"
+                        onClick={() => addParticipant(c.id)}
+                      >
+                        <UserPlus className="h-4 w-4 text-green-600" />
+                      </Button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManageRaffle(null)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={msgOpen} onOpenChange={setMsgOpen}>
         <DialogContent>

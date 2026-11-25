@@ -39,6 +39,8 @@ export interface LoyaltyStatus {
   raffle_animation: string
   tickets_enabled: boolean
   winner_template: string
+  show_reward_on_receipt: boolean
+  show_raffle_on_receipt: boolean
 }
 
 // Helpers so UI can branch on which currencies the current mode activates.
@@ -81,7 +83,9 @@ const DEFAULT: LoyaltyStatus = {
   exclude_red_debtors: false,
   raffle_animation: 'ruleta',
   tickets_enabled: false,
-  winner_template: ''
+  winner_template: '',
+  show_reward_on_receipt: true,
+  show_raffle_on_receipt: true
 }
 
 const LoyaltyContext = createContext<LoyaltyContextValue>({

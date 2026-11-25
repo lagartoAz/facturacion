@@ -86,6 +86,7 @@ export function registerLoyaltyHandlers(db: Database.Database): void {
   ipcMain.handle('loyalty:allBalances', () => service.allBalances())
   ipcMain.handle('loyalty:summaryByCustomer', () => service.summaryByCustomer())
   ipcMain.handle('loyalty:pointsByInvoice', () => service.pointsByInvoice())
+  ipcMain.handle('loyalty:ticketsByInvoice', () => service.ticketsByInvoice())
 
   // Physical raffle tickets
   ipcMain.handle('loyalty:ticketsForInvoice', (_event, invoiceId: number) =>
@@ -96,6 +97,10 @@ export function registerLoyaltyHandlers(db: Database.Database): void {
     return true
   })
   ipcMain.handle('loyalty:ticketsPrintedIds', () => service.ticketsPrintedIds())
+  ipcMain.handle('loyalty:earnedTicketsReport', () => service.earnedTicketsReport())
+  ipcMain.handle('loyalty:redemptionsReport', (_event, limit?: number) =>
+    service.redemptionsReport(limit)
+  )
   ipcMain.handle('loyalty:history', (_event, customerId: number, limit?: number) =>
     service.history(customerId, limit)
   )
@@ -196,5 +201,25 @@ export function registerLoyaltyHandlers(db: Database.Database): void {
   )
   ipcMain.handle('loyalty:drawRaffle', (_event, raffleId: number, rand: number) =>
     service.drawRaffle(raffleId, rand)
+  )
+  ipcMain.handle('loyalty:redrawRaffle', (_event, raffleId: number) =>
+    service.redrawRaffle(raffleId)
+  )
+  ipcMain.handle('loyalty:createLevelRaffle', (_event, name: string, levelId: number) =>
+    service.createLevelRaffle(name, levelId)
+  )
+  ipcMain.handle(
+    'loyalty:addRaffleParticipant',
+    (_event, raffleId: number, customerId: number) => {
+      service.addRaffleParticipant(raffleId, customerId)
+      return service.raffleParticipants(raffleId)
+    }
+  )
+  ipcMain.handle(
+    'loyalty:removeRaffleParticipant',
+    (_event, raffleId: number, customerId: number) => {
+      service.removeRaffleParticipant(raffleId, customerId)
+      return service.raffleParticipants(raffleId)
+    }
   )
 }

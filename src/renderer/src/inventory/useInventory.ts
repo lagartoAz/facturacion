@@ -101,12 +101,15 @@ export function useInventory(): InventoryApi {
   const search = useCallback(
     async (q: string): Promise<InvProduct[]> => {
       const term = q.trim()
+      // Empty query: show the WHOLE synced catalogue (not a 100-row server page),
+      // so the list reflects the real total of products in the database.
+      if (!term) return productsRef.current
       if (connected) {
         try {
           const rows = (await window.api.getProducts({
             active_only: true,
-            search: term || undefined,
-            limit: 100
+            search: term,
+            limit: 500
           })) as InvProduct[]
           return rows
         } catch {
@@ -115,9 +118,7 @@ export function useInventory(): InventoryApi {
       }
       // Offline: filter the cached catalogue by name or barcode.
       const low = term.toLowerCase()
-      const all = productsRef.current
-      if (!low) return all.slice(0, 100)
-      return all.filter(
+      return productsRef.current.filter(
         (p) => p.name.toLowerCase().includes(low) || (p.barcode ?? '').toLowerCase().includes(low)
       )
     },

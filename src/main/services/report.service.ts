@@ -121,6 +121,54 @@ export class ReportService {
       .all(...args) as MonthlySale[]
   }
 
+  // ---- Debts (credit invoices) by time bucket --------------------------------
+  // `count` is the number of credit sales (the "cantidad de deudas"); `total` is
+  // the amount owed from them. Same shapes as the sales series so the charts can
+  // overlay a second bar.
+  dailyDebts(from: string, to: string, customerId?: number): DailySale[] {
+    const cust = customerId ? ' AND customer_id = ?' : ''
+    const args = customerId ? [from, to, customerId] : [from, to]
+    return this.db
+      .prepare(
+        `SELECT date(created_at) as day, SUM(total_usd) as total, COUNT(*) as count
+         FROM invoices
+         WHERE status = 'completed' AND payment_method = 'credit'
+           AND date(created_at) >= ? AND date(created_at) <= ?${cust}
+         GROUP BY day
+         ORDER BY day ASC`
+      )
+      .all(...args) as DailySale[]
+  }
+
+  hourlyDebts(day: string, customerId?: number): HourlySale[] {
+    const cust = customerId ? ' AND customer_id = ?' : ''
+    const args = customerId ? [day, customerId] : [day]
+    return this.db
+      .prepare(
+        `SELECT strftime('%H', created_at) as hour, SUM(total_usd) as total, COUNT(*) as count
+         FROM invoices
+         WHERE status = 'completed' AND payment_method = 'credit' AND date(created_at) = ?${cust}
+         GROUP BY hour
+         ORDER BY hour ASC`
+      )
+      .all(...args) as HourlySale[]
+  }
+
+  monthlyDebts(from: string, to: string, customerId?: number): MonthlySale[] {
+    const cust = customerId ? ' AND customer_id = ?' : ''
+    const args = customerId ? [from, to, customerId] : [from, to]
+    return this.db
+      .prepare(
+        `SELECT strftime('%Y-%m', created_at) as month, SUM(total_usd) as total, COUNT(*) as count
+         FROM invoices
+         WHERE status = 'completed' AND payment_method = 'credit'
+           AND date(created_at) >= ? AND date(created_at) <= ?${cust}
+         GROUP BY month
+         ORDER BY month ASC`
+      )
+      .all(...args) as MonthlySale[]
+  }
+
   topProducts(from: string, to: string, limit = 10): TopProduct[] {
     return this.db
       .prepare(

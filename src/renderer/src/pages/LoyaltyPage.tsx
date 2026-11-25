@@ -2,14 +2,16 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useLoyalty, pointsActive } from '@/hooks/useLoyalty'
-import { Gift, Lock, Users, Sliders, Award, Ticket, BadgeCheck } from 'lucide-react'
+import { Gift, Lock, Users, Sliders, Award, Ticket, BadgeCheck, History } from 'lucide-react'
 import LoyaltyCustomers from '@/components/loyalty/LoyaltyCustomers'
 import LoyaltyRules from '@/components/loyalty/LoyaltyRules'
 import LoyaltyRewards from '@/components/loyalty/LoyaltyRewards'
 import LoyaltyRaffle from '@/components/loyalty/LoyaltyRaffle'
 import LoyaltyLevels from '@/components/loyalty/LoyaltyLevels'
+import LoyaltyTickets from '@/components/loyalty/LoyaltyTickets'
+import LoyaltyHistory from '@/components/loyalty/LoyaltyHistory'
 
-type Tab = 'clientes' | 'reglas' | 'niveles' | 'premios' | 'rifa'
+type Tab = 'clientes' | 'reglas' | 'niveles' | 'premios' | 'rifa' | 'tickets' | 'historial'
 
 export default function LoyaltyPage(): JSX.Element {
   const { status } = useLoyalty()
@@ -44,7 +46,14 @@ export default function LoyaltyPage(): JSX.Element {
     { key: 'reglas', label: 'Reglas', icon: Sliders, show: true },
     { key: 'niveles', label: 'Niveles', icon: BadgeCheck, show: withPoints && status.levels_enabled },
     { key: 'premios', label: 'Premios', icon: Award, show: withPoints && status.rewards_enabled },
-    { key: 'rifa', label: 'Rifa', icon: Ticket, show: status.raffle_enabled }
+    { key: 'rifa', label: 'Rifa', icon: Ticket, show: status.raffle_enabled },
+    {
+      key: 'tickets',
+      label: 'Tickets',
+      icon: Ticket,
+      show: status.raffle_enabled && status.tickets_enabled
+    },
+    { key: 'historial', label: 'Historial', icon: History, show: true }
   ]
 
   // If the active tab got hidden (feature turned off), fall back to Clientes.
@@ -78,6 +87,8 @@ export default function LoyaltyPage(): JSX.Element {
       {activeTab === 'niveles' && <LoyaltyLevels />}
       {activeTab === 'premios' && <LoyaltyRewards />}
       {activeTab === 'rifa' && <LoyaltyRaffle />}
+      {activeTab === 'tickets' && <LoyaltyTickets />}
+      {activeTab === 'historial' && <LoyaltyHistory />}
     </div>
   )
 }

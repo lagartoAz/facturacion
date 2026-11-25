@@ -145,6 +145,10 @@ export function encodeReceipt(data: ReceiptData, opts: EscposOptions = {}): Uint
   for (const pl of data.paymentLines) {
     b.line(pl.label ? `${pl.label}: ${pl.amount}` : pl.amount)
   }
+  if (data.loyaltyLines && data.loyaltyLines.length > 0) {
+    b.line(divider(width))
+    for (const l of data.loyaltyLines) b.line(l)
+  }
   if (data.thanks) b.line().line(data.thanks)
 
   b.raw(LF, LF, LF) // feed before cut

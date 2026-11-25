@@ -6,6 +6,7 @@ import { formatUSD, formatVES, formatCOP } from '@/lib/currency'
 import { scanBarcode } from '@/lib/barcode-scanner'
 import type { InvProduct, Rate } from './types'
 import type { InventoryApi } from './useInventory'
+import { ProductThumb } from '@/components/ProductThumb'
 import CreateProductDialog from './CreateProductDialog'
 import AddStockDialog from './AddStockDialog'
 
@@ -84,7 +85,11 @@ export default function InventoryList({ inv }: { inv: InventoryApi }): JSX.Eleme
       {/* New product */}
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">
-          {searching ? 'Buscando…' : `${results.length} producto(s)`}
+          {searching
+            ? 'Buscando…'
+            : query.trim()
+              ? `${results.length} resultado(s)`
+              : `${inv.products.length} producto(s) en total`}
         </span>
         <Button
           size="sm"
@@ -109,6 +114,13 @@ export default function InventoryList({ inv }: { inv: InventoryApi }): JSX.Eleme
           const low = p.stock <= p.min_stock
           return (
             <div key={p.id} className="flex items-center gap-3 p-3">
+              <ProductThumb
+                productId={p.id}
+                hasImage={!!p.has_image}
+                name={p.name}
+                className="h-12 w-12 shrink-0"
+                iconClassName="h-5 w-5"
+              />
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium">{p.name}</p>
                 <p className="text-xs text-muted-foreground">

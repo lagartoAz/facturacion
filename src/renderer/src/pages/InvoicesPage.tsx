@@ -96,6 +96,7 @@ const PAGE_SIZE = 20
 export default function InvoicesPage(): JSX.Element {
   const { status: loyalty } = useLoyalty()
   const [invoicePoints, setInvoicePoints] = useState<Record<number, number>>({})
+  const [invoiceTickets, setInvoiceTickets] = useState<Record<number, number>>({})
   const [ticketsPrinted, setTicketsPrinted] = useState<Set<number>>(new Set())
   const [tab, setTab] = useState<Tab>('invoices')
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -133,19 +134,22 @@ export default function InvoicesPage(): JSX.Element {
         (await window.api.getLoyaltyPointsByInvoice()) as Record<number, number>
       )
       if (loyalty.tickets_enabled) {
-        const ids = (await window.api.getTicketsPrintedIds()) as number[]
+        const [ids, tix] = await Promise.all([
+          window.api.getTicketsPrintedIds() as Promise<number[]>,
+          window.api.getLoyaltyTicketsByInvoice() as Promise<Record<number, number>>
+        ])
         setTicketsPrinted(new Set(ids))
+        setInvoiceTickets(tix)
       }
     }
   }, [dateFrom, dateTo, invoicePage, loyalty.enabled, loyalty.tickets_enabled])
 
-  // Physical raffle tickets this invoice generates (same rule as entries, but a
-  // threshold-only raffle still yields one ticket per qualifying purchase).
+  // Physical raffle tickets this invoice actually generated. Read straight from
+  // the tickets ledger (earn rows), which already honours the per-invoice cap
+  // and is only written when loyalty was active at sale time.
   const ticketCount = (id: number): number => {
-    if (!loyalty.tickets_enabled || !loyalty.raffle_enabled) return 0
-    const points = invoicePoints[id] ?? 0
-    const ppe = loyalty.raffle_points_per_entry
-    return ppe > 0 ? Math.floor(points / ppe) : points > 0 ? 1 : 0
+    if (!loyalty.enabled || !loyalty.tickets_enabled || !loyalty.raffle_enabled) return 0
+    return invoiceTickets[id] ?? 0
   }
 
   async function printTickets(invoiceId: number): Promise<void> {
@@ -158,13 +162,25 @@ export default function InvoicesPage(): JSX.Element {
     }
   }
 
-  // Points an invoice granted, and how many raffle entries those points buy.
+  // Points an invoice granted, and the raffle entries (tickets) it earned.
+  // Both come from their ledgers, so old invoices created without the loyalty
+  // add-on active simply have no rows and show 0.
   const invoiceReward = (
     id: number
   ): { points: number; entries: number } => {
+    if (!loyalty.enabled) return { points: 0, entries: 0 }
     const points = invoicePoints[id] ?? 0
-    const ppe = loyalty.raffle_points_per_entry
-    const entries = loyalty.raffle_enabled && ppe > 0 ? Math.floor(points / ppe) : 0
+    let entries = 0
+    if (loyalty.raffle_enabled) {
+      if (loyalty.tickets_enabled) {
+        // Ticket currency: entries == physical tickets earned (already capped).
+        entries = invoiceTickets[id] ?? 0
+      } else {
+        // Points-based raffle: entries derived from the points the sale earned.
+        const ppe = loyalty.raffle_points_per_entry
+        entries = ppe > 0 ? Math.floor(points / ppe) : points > 0 ? 1 : 0
+      }
+    }
     return { points, entries }
   }
 

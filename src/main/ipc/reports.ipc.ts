@@ -28,4 +28,16 @@ export function registerReportHandlers(db: Database.Database): void {
   ipcMain.handle('reports:productStats', (_event, productId: number) => {
     return service.productStats(productId)
   })
+
+  ipcMain.handle('reports:dailyDebts', (_event, from: string, to: string, customerId?: number) => {
+    return service.dailyDebts(from, to, customerId)
+  })
+
+  ipcMain.handle('reports:hourlyDebts', (_event, day: string, customerId?: number) => {
+    return service.hourlyDebts(day, customerId)
+  })
+
+  ipcMain.handle('reports:monthlyDebts', (_event, from: string, to: string, customerId?: number) => {
+    return service.monthlyDebts(from, to, customerId)
+  })
 }

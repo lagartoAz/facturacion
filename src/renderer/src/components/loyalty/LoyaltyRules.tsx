@@ -56,7 +56,9 @@ export default function LoyaltyRules(): JSX.Element {
       raffle_points_per_entry: cfg.raffle_points_per_entry,
       raffle_min_points: cfg.raffle_min_points,
       exclude_red_debtors: cfg.exclude_red_debtors,
-      tickets_enabled: cfg.tickets_enabled
+      tickets_enabled: cfg.tickets_enabled,
+      show_reward_on_receipt: cfg.show_reward_on_receipt,
+      show_raffle_on_receipt: cfg.show_raffle_on_receipt
     })
     await refresh()
     alert('Reglas guardadas')
@@ -383,6 +385,27 @@ export default function LoyaltyRules(): JSX.Element {
               />
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* What to print on the sale receipt */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">En la factura de venta</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Toggle
+            label="Mostrar puntos/tickets ganados"
+            hint="Imprime en la factura cuántos puntos y tickets ganó el cliente con la compra"
+            checked={cfg.show_reward_on_receipt}
+            onChange={(v) => upd('show_reward_on_receipt', v)}
+          />
+          <Toggle
+            label="Mostrar nombre de la rifa activa"
+            hint="Si hay una rifa abierta, imprime su nombre para que el cliente sepa en qué participa"
+            checked={cfg.show_raffle_on_receipt}
+            onChange={(v) => upd('show_raffle_on_receipt', v)}
+          />
         </CardContent>
       </Card>
 
