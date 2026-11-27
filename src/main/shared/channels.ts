@@ -33,6 +33,7 @@ export const PROXIED_CHANNELS: string[] = [
   'customers:getCreditInvoices',
   'customers:addPayment',
   'customers:getPayments',
+  'customers:setCreditGrace',
   'suppliers:getAll',
   'suppliers:create',
   'suppliers:update',

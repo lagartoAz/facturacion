@@ -12,7 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { formatUSD, formatVES, formatCOP, convertCurrency } from '@/lib/currency'
-import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft, Star, Ticket, BarChart3, Award } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Wallet, Eye, ChevronLeft, ChevronRight, DollarSign, CreditCard, ArrowRightLeft, Star, Ticket, BarChart3, Award, Gift, CalendarClock } from 'lucide-react'
 import { format } from 'date-fns'
 import { useLoyalty } from '@/hooks/useLoyalty'
 import { useListKeyboardNav } from '@/hooks/use-list-keyboard-nav'
@@ -27,6 +27,7 @@ interface Customer {
   email: string | null
   notes: string | null
   sector: string | null
+  credit_grace_until: string | null
 }
 
 interface CreditInvoice {
@@ -116,8 +117,27 @@ export default function CustomersPage(): JSX.Element {
   const [invoiceDetailOpen, setInvoiceDetailOpen] = useState(false)
   const [invoiceDetail, setInvoiceDetail] = useState<InvoiceDetail | null>(null)
   const [invoiceDetailPending, setInvoiceDetailPending] = useState(0)
+  // Otorgar puntos/tickets a gusto desde la lista de clientes.
+  const [grantCustomer, setGrantCustomer] = useState<Customer | null>(null)
+  const [grantPoints, setGrantPoints] = useState('')
+  const [grantTickets, setGrantTickets] = useState('')
+  // Prórroga de pago (fecha hasta la cual el deudor no cuenta como crítico).
+  const [graceUntil, setGraceUntil] = useState('')
 
   const { status: loyalty } = useLoyalty()
+
+  const loadLoyalty = useCallback(async () => {
+    const [s, lv] = await Promise.all([
+      window.api.getLoyaltySummaryByCustomer() as Promise<
+        Record<number, { points: number; entries: number }>
+      >,
+      window.api.getLoyaltyLevelsByCustomer() as Promise<
+        Record<number, { name: string; color: string | null; rank: number }>
+      >
+    ])
+    setLoyaltySummary(s)
+    setLevels(lv)
+  }, [])
 
   const loadCustomers = useCallback(async () => {
     const [customersData, balancesData, overdueData, sectorsData] = await Promise.all([
@@ -140,19 +160,8 @@ export default function CustomersPage(): JSX.Element {
       setSortByLevel(false)
       return
     }
-    void (async () => {
-      const [s, lv] = await Promise.all([
-        window.api.getLoyaltySummaryByCustomer() as Promise<
-          Record<number, { points: number; entries: number }>
-        >,
-        window.api.getLoyaltyLevelsByCustomer() as Promise<
-          Record<number, { name: string; color: string | null; rank: number }>
-        >
-      ])
-      setLoyaltySummary(s)
-      setLevels(lv)
-    })()
-  }, [loyalty.enabled])
+    void loadLoyalty()
+  }, [loyalty.enabled, loadLoyalty])
 
   useEffect(() => {
     setCustomerPage(1)
@@ -223,6 +232,45 @@ export default function CustomersPage(): JSX.Element {
     }
   }
 
+  function openGrant(c: Customer): void {
+    setGrantCustomer(c)
+    setGrantPoints('')
+    setGrantTickets('')
+  }
+
+  // Otorga puntos y/o tickets a gusto. Los tickets van al bolsón general (rifa
+  // activa) y, junto con los puntos, hacen que el cliente aparezca participando.
+  async function doGrant(): Promise<void> {
+    if (!grantCustomer) return
+    const pts = parseInt(grantPoints, 10)
+    const tks = parseInt(grantTickets, 10)
+    if ((!pts || pts <= 0) && (!tks || tks <= 0)) {
+      alert('Ingresa una cantidad de puntos o tickets')
+      return
+    }
+    try {
+      if (pts && pts > 0) {
+        await window.api.adjustLoyaltyPoints(grantCustomer.id, pts, 'Otorgado a gusto')
+      }
+      if (tks && tks > 0) {
+        await window.api.adjustLoyaltyTickets(grantCustomer.id, tks, 'Otorgado a gusto')
+      }
+      setGrantCustomer(null)
+      await loadLoyalty()
+    } catch (e) {
+      alert((e as Error).message || 'No se pudo otorgar')
+    }
+  }
+
+  // Da (o quita, con cadena vacía) una prórroga de pago al deudor abierto en el
+  // diálogo de deuda. Mientras esté vigente no cuenta como crítico.
+  async function saveGrace(until: string): Promise<void> {
+    if (!debtCustomer) return
+    await window.api.setCustomerCreditGrace(debtCustomer.id, until || null)
+    setDebtCustomer({ ...debtCustomer, credit_grace_until: until || null })
+    loadCustomers()
+  }
+
   function applyFifoToInvoices(invoices: CreditInvoice[], totalPaid: number): CreditInvoice[] {
     const sorted = [...invoices].sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -249,6 +297,7 @@ export default function CustomersPage(): JSX.Element {
     setPaymentNotes('')
     setPayMethod('cash')
     setPayCurrency('USD')
+    setGraceUntil(c.credit_grace_until ? c.credit_grace_until.slice(0, 10) : '')
     setDebtBalance(balances[c.id] ?? 0)
     setDebtDialogOpen(true)
     const [balance, invoices, pays] = await Promise.all([
@@ -512,6 +561,11 @@ export default function CustomersPage(): JSX.Element {
                         <Button variant="ghost" size="icon" onClick={() => openDebt(c)} title="Ver deuda">
                           <Wallet className="h-4 w-4" />
                         </Button>
+                        {loyalty.enabled && (
+                          <Button variant="ghost" size="icon" onClick={() => openGrant(c)} title="Otorgar puntos / tickets">
+                            <Gift className="h-4 w-4 text-fuchsia-600" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Editar">
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -585,6 +639,11 @@ export default function CustomersPage(): JSX.Element {
                       <Button variant="ghost" size="icon" onClick={() => openDebt(c)} title="Ver deuda">
                         <Wallet className="h-4 w-4" />
                       </Button>
+                      {loyalty.enabled && (
+                        <Button variant="ghost" size="icon" onClick={() => openGrant(c)} title="Otorgar puntos / tickets">
+                          <Gift className="h-4 w-4 text-fuchsia-600" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" onClick={() => openEdit(c)} title="Editar">
                         <Pencil className="h-4 w-4" />
                       </Button>
@@ -704,6 +763,50 @@ export default function CustomersPage(): JSX.Element {
                   {formatUSD(debtBalance)}
                 </p>
               </div>
+
+              {/* Prórroga de pago: mientras esté vigente, el deudor no cuenta como
+                  crítico (ni en el contador ni al excluirse de la rifa). */}
+              {debtBalance > 0 && (
+                <div className="space-y-2 rounded-lg border p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <CalendarClock className="h-4 w-4" />
+                    Plazo de pago (prórroga)
+                  </div>
+                  {debtCustomer.credit_grace_until &&
+                  debtCustomer.credit_grace_until.slice(0, 10) >= format(new Date(), 'yyyy-MM-dd') ? (
+                    <p className="text-xs text-green-600">
+                      Con prórroga hasta {format(new Date(debtCustomer.credit_grace_until.slice(0, 10) + 'T00:00:00'), 'dd/MM/yyyy')}: no cuenta como crítico y puede participar en la rifa.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Da un plazo para que, aunque deba, no cuente como deudor crítico hasta esa fecha.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-end gap-2">
+                    <Input
+                      type="date"
+                      value={graceUntil}
+                      onChange={(e) => setGraceUntil(e.target.value)}
+                      className="w-44"
+                    />
+                    <Button size="sm" variant="outline" onClick={() => saveGrace(graceUntil)} disabled={!graceUntil}>
+                      Dar plazo
+                    </Button>
+                    {debtCustomer.credit_grace_until && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setGraceUntil('')
+                          void saveGrace('')
+                        }}
+                      >
+                        Quitar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Credit invoices */}
               {creditInvoices.length > 0 && (
@@ -1042,6 +1145,53 @@ export default function CustomersPage(): JSX.Element {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Otorgar puntos / tickets a gusto */}
+      <Dialog open={grantCustomer !== null} onOpenChange={(v) => { if (!v) setGrantCustomer(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="h-5 w-5 text-fuchsia-600" />
+              Otorgar a {grantCustomer?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Dale puntos o tickets para que empiece a participar. Aparecerá en la lista de participantes y los tickets se podrán imprimir desde Fidelidad.
+            </p>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <Star className="h-4 w-4 text-amber-500" /> Puntos
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={grantPoints}
+                onChange={(e) => setGrantPoints(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1">
+                <Ticket className="h-4 w-4" /> Tickets
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                value={grantTickets}
+                onChange={(e) => setGrantTickets(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGrantCustomer(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={doGrant}>Otorgar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

@@ -665,4 +665,12 @@ export function runMigrations(db: Database.Database): void {
     db.exec(`ALTER TABLE customers ADD COLUMN sector TEXT;`)
     db.pragma('user_version = 27')
   }
+
+  if (version < 28) {
+    // Prórroga de pago para un deudor crítico: mientras esta fecha esté en el
+    // futuro, el cliente NO cuenta como crítico (ni en el contador ni en la
+    // exclusión de la rifa) aunque siga debiendo. Al vencer, vuelve a contar.
+    db.exec(`ALTER TABLE customers ADD COLUMN credit_grace_until TEXT;`)
+    db.pragma('user_version = 28')
+  }
 }

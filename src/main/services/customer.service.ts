@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import { SettingsService } from './settings.service'
+import { LoyaltyService } from './loyalty.service'
 
 export interface Customer {
   id: number
@@ -10,6 +11,8 @@ export interface Customer {
   email: string | null
   notes: string | null
   sector: string | null
+  /** Prórroga de pago: mientras esté vigente no cuenta como deudor crítico. */
+  credit_grace_until: string | null
   created_at: string
   updated_at: string
 }
@@ -35,9 +38,11 @@ export interface PaymentDetails {
 
 export class CustomerService {
   private settings: SettingsService
+  private loyalty: LoyaltyService
 
   constructor(private db: Database.Database) {
     this.settings = new SettingsService(db)
+    this.loyalty = new LoyaltyService(db)
   }
 
   getAll(search?: string): Customer[] {
@@ -154,6 +159,27 @@ export class CustomerService {
       .all() as { customer_id: number; total: number }[]
     const paidByCustomer = new Map(payRows.map((p) => [p.customer_id, p.total]))
 
+    // Tolerancia de centavos: pagos en Bs/Pesos y precios por peso dejan restos
+    // de fracciones de centavo. Sin esto, alguien que "pagó todo" podía quedar
+    // con US$0.0001 pendiente y aparecer como crítico aunque figure solvente.
+    const EPS = 0.01
+    // Deuda neta por cliente (crédito − pagos). Si ya saldó (≤ EPS), no atrasa.
+    const owed = new Map<number, number>()
+    for (const inv of invoices) {
+      owed.set(inv.customer_id, (owed.get(inv.customer_id) ?? 0) + inv.total_usd)
+    }
+    owed.forEach((total, cid) => owed.set(cid, total - (paidByCustomer.get(cid) ?? 0)))
+    // Clientes con prórroga vigente: no cuentan como atrasados hasta que venza.
+    const graced = new Set(
+      (
+        this.db
+          .prepare(
+            "SELECT id FROM customers WHERE credit_grace_until IS NOT NULL AND date(credit_grace_until) >= date('now','localtime')"
+          )
+          .all() as { id: number }[]
+      ).map((r) => r.id)
+    )
+
     const now = new Date()
     const out: Record<number, number> = {}
     let curCust: number | null = null
@@ -162,9 +188,13 @@ export class CustomerService {
       if (inv.customer_id !== curCust) {
         curCust = inv.customer_id
         remaining = paidByCustomer.get(inv.customer_id) ?? 0
+        // Deuda saldada o prórroga vigente → marcado como no atrasado (0 meses).
+        if (graced.has(inv.customer_id) || (owed.get(inv.customer_id) ?? 0) <= EPS) {
+          out[inv.customer_id] = 0
+        }
       }
-      if (out[inv.customer_id] !== undefined) continue // ya ubicamos su factura más vieja sin pagar
-      if (remaining >= inv.total_usd) {
+      if (out[inv.customer_id] !== undefined) continue // ya resuelto para este cliente
+      if (remaining >= inv.total_usd - EPS) {
         remaining -= inv.total_usd
         continue // esta factura quedó saldada por pagos previos
       }
@@ -176,6 +206,15 @@ export class CustomerService {
       out[inv.customer_id] = Math.max(0, months)
     }
     return out
+  }
+
+  // Fija (o quita, con null) una prórroga de pago para un deudor: mientras la
+  // fecha esté vigente, el cliente deja de contar como crítico y puede
+  // participar/ganar en la rifa, aunque siga debiendo.
+  setCreditGrace(customerId: number, until: string | null): void {
+    this.db
+      .prepare("UPDATE customers SET credit_grace_until = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(until || null, customerId)
   }
 
   // Sectores ya usados (para sugerir al registrar un cliente). Orden alfabético.
@@ -223,11 +262,58 @@ export class CustomerService {
     const amountVes = currency === 'VES' ? amount * rateVes : null
     const amountCop = currency === 'COP' ? amount * rateCop : null
 
-    this.db.prepare(
-      `INSERT INTO customer_payments
-        (customer_id, amount_usd, notes, method, currency, amount_ves, amount_cop, rate_ves, rate_cop, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`
-    ).run(customerId, amount, notes || null, method, currency, amountVes, amountCop, rateVes, rateCop)
+    // El pago y el otorgamiento de fidelidad de las facturas que queden saldadas
+    // se hacen juntos (misma transacción) para que no puedan quedar a medias.
+    const tx = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO customer_payments
+            (customer_id, amount_usd, notes, method, currency, amount_ves, amount_cop, rate_ves, rate_cop, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'localtime'))`
+        )
+        .run(customerId, amount, notes || null, method, currency, amountVes, amountCop, rateVes, rateCop)
+      this.grantLoyaltyForPaidCredit(customerId, method, currency)
+    })
+    tx()
+  }
+
+  // Tras registrar un pago, otorga los puntos/tickets de las facturas a crédito
+  // que, en orden (FIFO, la más vieja primero), hayan quedado completamente
+  // saldadas. Las ventas a crédito no acumulan al emitirse: lo hacen al pagarse.
+  // Es idempotente por factura, así que pagos parciales no duplican nada.
+  private grantLoyaltyForPaidCredit(
+    customerId: number,
+    paymentMethod: string,
+    currency: string
+  ): void {
+    const credits = this.db
+      .prepare(
+        "SELECT id, total_usd FROM invoices WHERE customer_id = ? AND payment_method = 'credit' AND status = 'completed' ORDER BY datetime(created_at) ASC, id ASC"
+      )
+      .all(customerId) as { id: number; total_usd: number }[]
+    if (credits.length === 0) return
+    const paid = (
+      this.db
+        .prepare('SELECT COALESCE(SUM(amount_usd), 0) as t FROM customer_payments WHERE customer_id = ?')
+        .get(customerId) as { t: number }
+    ).t
+    const EPS = 0.01
+    let remaining = paid
+    for (const inv of credits) {
+      if (remaining < inv.total_usd - EPS) break // esta factura aún no está saldada
+      remaining -= inv.total_usd
+      const items = this.db
+        .prepare('SELECT product_id as productId, quantity FROM invoice_items WHERE invoice_id = ?')
+        .all(inv.id) as { productId: number | null; quantity: number }[]
+      this.loyalty.grantCreditInvoiceEarnings(
+        inv.id,
+        customerId,
+        inv.total_usd,
+        paymentMethod,
+        currency,
+        items
+      )
+    }
   }
 
   getPayments(customerId: number): {

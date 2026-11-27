@@ -18,7 +18,7 @@ import {
   formatAmountIn,
   plainAmountIn
 } from '@/lib/currency'
-import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2, ChevronLeft, ChevronRight, MessageCircle, PackagePlus, Star, Ticket } from 'lucide-react'
+import { Eye, Ban, Printer, FileText, ClipboardList, ShoppingCart, Trash2, ChevronLeft, ChevronRight, MessageCircle, PackagePlus, Star, Ticket, StickyNote } from 'lucide-react'
 import { format } from 'date-fns'
 import { useLoyalty } from '@/hooks/useLoyalty'
 import { printRaffleTickets } from '@/lib/raffle-tickets'
@@ -43,6 +43,7 @@ interface Invoice {
   cash_currency: string | null
   payment_amount_ves: number | null
   payment_amount_cop: number | null
+  notes: string | null
   status: string
   created_at: string
   items?: InvoiceItem[]
@@ -116,6 +117,8 @@ export default function InvoicesPage(): JSX.Element {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [notification, setNotification] = useState('')
+  // Nota de una factura, para verla al tocar su icono en la lista.
+  const [noteView, setNoteView] = useState<string | null>(null)
 
   const loadInvoices = useCallback(async () => {
     const filters = {
@@ -652,6 +655,11 @@ export default function InvoicesPage(): JSX.Element {
                       </Badge>
                     </td>
                     <td className="p-3 text-center">
+                      {inv.notes && (
+                        <Button variant="ghost" size="icon" title="Ver nota" onClick={() => setNoteView(inv.notes)}>
+                          <StickyNote className="h-4 w-4 text-primary" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" onClick={() => viewInvoice(inv.id)}>
                         <Eye className="h-4 w-4" />
                       </Button>
@@ -740,6 +748,11 @@ export default function InvoicesPage(): JSX.Element {
                   </Badge>
                 </div>
                 <div className="flex justify-end gap-1 pt-1 border-t">
+                  {inv.notes && (
+                    <Button variant="ghost" size="icon" title="Ver nota" onClick={() => setNoteView(inv.notes)}>
+                      <StickyNote className="h-4 w-4 text-primary" />
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" onClick={() => viewInvoice(inv.id)}>
                     <Eye className="h-4 w-4" />
                   </Button>
@@ -1324,6 +1337,19 @@ export default function InvoicesPage(): JSX.Element {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Nota de la factura (solo lectura; no se imprime) */}
+      <Dialog open={noteView !== null} onOpenChange={(v) => { if (!v) setNoteView(null) }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <StickyNote className="h-5 w-5" />
+              Nota de la factura
+            </DialogTitle>
+          </DialogHeader>
+          <p className="whitespace-pre-wrap break-words text-sm">{noteView}</p>
         </DialogContent>
       </Dialog>
 

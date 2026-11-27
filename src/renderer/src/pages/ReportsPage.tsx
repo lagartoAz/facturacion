@@ -7,6 +7,7 @@ import { format, subDays, startOfYear, endOfYear, subMonths, startOfMonth, endOf
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -406,42 +407,33 @@ export default function ReportsPage(): JSX.Element {
                 <BarChart data={monthlyChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="label" fontSize={12} />
-                  <YAxis yAxisId="left" fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    allowDecimals={false}
-                    fontSize={12}
-                  />
+                  <YAxis fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
                   <Tooltip
                     formatter={(value: number, _n, item) =>
-                      item?.dataKey === 'debts'
-                        ? [`${value} · ${formatUSD((item?.payload?.debtsMoney as number) ?? 0)}`, 'Deudas']
-                        : item?.dataKey === 'paidDebts'
-                          ? [`${value} · ${formatUSD((item?.payload?.paidDebtsMoney as number) ?? 0)}`, 'Deudas pagadas']
+                      item?.dataKey === 'debtsMoney'
+                        ? [`${formatUSD(value)} · ${(item?.payload?.debts as number) ?? 0} deuda(s)`, 'Deudas']
+                        : item?.dataKey === 'paidDebtsMoney'
+                          ? [`${formatUSD(value)} · ${(item?.payload?.paidDebts as number) ?? 0} pagada(s)`, 'Deudas pagadas']
                           : [fmtVal(value), points ? 'Puntos' : 'Total']
                     }
                   />
                   <Legend />
                   <Bar
-                    yAxisId="left"
                     name={points ? 'Puntos' : 'Ventas'}
                     dataKey="total"
                     fill="hsl(221.2, 83.2%, 53.3%)"
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar
-                    yAxisId="right"
                     name="Deudas"
-                    dataKey="debts"
+                    dataKey="debtsMoney"
                     fill="hsl(0, 72%, 51%)"
                     radius={[4, 4, 0, 0]}
                   />
                   {showPaidDebts && (
                     <Bar
-                      yAxisId="right"
                       name="Deudas pagadas"
-                      dataKey="paidDebts"
+                      dataKey="paidDebtsMoney"
                       fill="hsl(142, 71%, 45%)"
                       radius={[4, 4, 0, 0]}
                     />
@@ -464,43 +456,34 @@ export default function ReportsPage(): JSX.Element {
                     fontSize={12}
                     interval={1}
                   />
-                  <YAxis yAxisId="left" fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    allowDecimals={false}
-                    fontSize={12}
-                  />
+                  <YAxis fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
                   <Tooltip
                     formatter={(value: number, _n, item) =>
-                      item?.dataKey === 'debts'
-                        ? [`${value} · ${formatUSD((item?.payload?.debtsMoney as number) ?? 0)}`, 'Deudas']
-                        : item?.dataKey === 'paidDebts'
-                          ? [`${value} · ${formatUSD((item?.payload?.paidDebtsMoney as number) ?? 0)}`, 'Deudas pagadas']
+                      item?.dataKey === 'debtsMoney'
+                        ? [`${formatUSD(value)} · ${(item?.payload?.debts as number) ?? 0} deuda(s)`, 'Deudas']
+                        : item?.dataKey === 'paidDebtsMoney'
+                          ? [`${formatUSD(value)} · ${(item?.payload?.paidDebts as number) ?? 0} pagada(s)`, 'Deudas pagadas']
                           : [fmtVal(value), points ? 'Puntos' : 'Total']
                     }
                     labelFormatter={(label) => `${label}:00 - ${label}:59`}
                   />
                   <Legend />
                   <Bar
-                    yAxisId="left"
                     name={points ? 'Puntos' : 'Ventas'}
                     dataKey="total"
                     fill="hsl(221.2, 83.2%, 53.3%)"
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar
-                    yAxisId="right"
                     name="Deudas"
-                    dataKey="debts"
+                    dataKey="debtsMoney"
                     fill="hsl(0, 72%, 51%)"
                     radius={[4, 4, 0, 0]}
                   />
                   {showPaidDebts && (
                     <Bar
-                      yAxisId="right"
                       name="Deudas pagadas"
-                      dataKey="paidDebts"
+                      dataKey="paidDebtsMoney"
                       fill="hsl(142, 71%, 45%)"
                       radius={[4, 4, 0, 0]}
                     />
@@ -521,38 +504,34 @@ export default function ReportsPage(): JSX.Element {
                   tickFormatter={(v) => format(new Date(v + 'T00:00:00'), 'dd/MM')}
                   fontSize={12}
                 />
-                <YAxis yAxisId="left" fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
-                <YAxis yAxisId="right" orientation="right" allowDecimals={false} fontSize={12} />
+                <YAxis fontSize={12} tickFormatter={(v) => (points ? `${v}` : `$${v}`)} />
                 <Tooltip
                   formatter={(value: number, _n, item) =>
-                    item?.dataKey === 'debts'
-                      ? [`${value} · ${formatUSD((item?.payload?.debtsMoney as number) ?? 0)}`, 'Deudas']
-                      : item?.dataKey === 'paidDebts'
-                        ? [`${value} · ${formatUSD((item?.payload?.paidDebtsMoney as number) ?? 0)}`, 'Deudas pagadas']
+                    item?.dataKey === 'debtsMoney'
+                      ? [`${formatUSD(value)} · ${(item?.payload?.debts as number) ?? 0} deuda(s)`, 'Deudas']
+                      : item?.dataKey === 'paidDebtsMoney'
+                        ? [`${formatUSD(value)} · ${(item?.payload?.paidDebts as number) ?? 0} pagada(s)`, 'Deudas pagadas']
                         : [fmtVal(value), points ? 'Puntos' : 'Total']
                   }
                   labelFormatter={(label) => format(new Date(label + 'T00:00:00'), 'dd/MM/yyyy')}
                 />
                 <Legend />
                 <Bar
-                  yAxisId="left"
                   name={points ? 'Puntos' : 'Ventas'}
                   dataKey="total"
                   fill="hsl(221.2, 83.2%, 53.3%)"
                   radius={[4, 4, 0, 0]}
                 />
                 <Bar
-                  yAxisId="right"
                   name="Deudas"
-                  dataKey="debts"
+                  dataKey="debtsMoney"
                   fill="hsl(0, 72%, 51%)"
                   radius={[4, 4, 0, 0]}
                 />
                 {showPaidDebts && (
                   <Bar
-                    yAxisId="right"
                     name="Deudas pagadas"
-                    dataKey="paidDebts"
+                    dataKey="paidDebtsMoney"
                     fill="hsl(142, 71%, 45%)"
                     radius={[4, 4, 0, 0]}
                   />
@@ -567,7 +546,8 @@ export default function ReportsPage(): JSX.Element {
         </CardContent>
       </Card>
 
-      {/* Clientes por sector de vivienda (barras de un solo color, solo cantidad) */}
+      {/* Clientes por sector: orden alfabético y cada barra de un azul distinto,
+          degradado de izquierda (base, más oscuro) a derecha (más claro). */}
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Clientes por sector</CardTitle>
@@ -575,17 +555,25 @@ export default function ReportsPage(): JSX.Element {
         <CardContent>
           {sectorCounts.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={sectorCounts}>
+              <BarChart
+                data={[...sectorCounts].sort((a, b) => a.sector.localeCompare(b.sector))}
+              >
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="sector" fontSize={12} interval={0} angle={-20} textAnchor="end" height={60} />
                 <YAxis allowDecimals={false} fontSize={12} />
                 <Tooltip formatter={(value: number) => [value, 'Clientes']} />
-                <Bar
-                  name="Clientes"
-                  dataKey="count"
-                  fill="hsl(221.2, 83.2%, 53.3%)"
-                  radius={[4, 4, 0, 0]}
-                />
+                <Bar name="Clientes" dataKey="count" radius={[4, 4, 0, 0]}>
+                  {[...sectorCounts]
+                    .sort((a, b) => a.sector.localeCompare(b.sector))
+                    .map((s, i, arr) => {
+                      // Base oklch(28.2% 0.091 267.935); sube la luminosidad hacia
+                      // la derecha para lograr el degradado entre barras.
+                      const l = arr.length <= 1 ? 40 : 28.2 + (i / (arr.length - 1)) * 40
+                      return (
+                        <Cell key={s.sector} fill={`oklch(${l.toFixed(1)}% 0.091 267.935)`} />
+                      )
+                    })}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           ) : (

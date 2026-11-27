@@ -58,7 +58,8 @@ import {
   Ticket,
   Tag,
   X,
-  Star
+  Star,
+  StickyNote
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { useLoyalty, pointsActive } from '@/hooks/useLoyalty'
@@ -267,6 +268,10 @@ export default function PosPage(): JSX.Element {
   const [completedInvoice, setCompletedInvoice] = useState<CompletedInvoice | null>(null)
   const [pendingCarts, setPendingCarts] = useState<PendingCart[]>([])
   const [pauseDialogOpen, setPauseDialogOpen] = useState(false)
+  // Nota opcional de la venta: se guarda en la factura y solo se ve en la lista
+  // de facturas (no se imprime ni se muestra en otro lado).
+  const [saleNote, setSaleNote] = useState('')
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false)
   const [pauseLabel, setPauseLabel] = useState('')
   const [pendingCartsOpen, setPendingCartsOpen] = useState(false)
   const [printBehavior, setPrintBehavior] = useState<'ask' | 'always' | 'never'>('ask')
@@ -628,6 +633,7 @@ export default function PosPage(): JSX.Element {
       })
       setCart([])
       setPauseLabel('')
+      setSaleNote('')
       setPauseDialogOpen(false)
       const updated = await window.api.getPendingCarts()
       setPendingCarts(updated)
@@ -788,7 +794,8 @@ export default function PosPage(): JSX.Element {
         cashCurrency: paymentMethod === 'cash' ? cashCurrency : undefined,
         paymentAmountVes: (paymentMethod === 'card' || (paymentMethod === 'transfer' && transferCurrency === 'VES')) && paymentVes ? parseFloat(paymentVes) || undefined : undefined,
         paymentAmountCop: paymentMethod === 'transfer' && transferCurrency === 'COP' && paymentCop ? parseFloat(paymentCop) || undefined : undefined,
-        couponId: selectedCoupon?.id
+        couponId: selectedCoupon?.id,
+        notes: saleNote.trim() || undefined
       }
       if (paymentMethod === 'mixed') {
         invoiceData.payments = [
@@ -812,6 +819,7 @@ export default function PosPage(): JSX.Element {
       setCustNameQuery('')
       setCustCedulaQuery('')
       setSelectedCoupon(null)
+      setSaleNote('')
       setPaymentDialogOpen(false)
       setPaymentMethod('cash')
       setCashCurrency('USD')
@@ -1531,6 +1539,15 @@ export default function PosPage(): JSX.Element {
             >
               <Pause className="mr-2 h-4 w-4" />
               Pausar
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={cart.length === 0}
+              title={saleNote.trim() ? 'Editar nota de la venta' : 'Agregar nota a la venta'}
+              onClick={() => setNoteDialogOpen(true)}
+            >
+              <StickyNote className={saleNote.trim() ? 'h-4 w-4 text-primary' : 'h-4 w-4'} />
             </Button>
             <Button
               className="flex-1"
@@ -2393,6 +2410,44 @@ export default function PosPage(): JSX.Element {
               >
                 Crear y agregar
               </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nota de la venta (solo visible luego en la lista de facturas) */}
+      <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <StickyNote className="h-5 w-5" />
+              Nota de la venta
+            </DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              setNoteDialogOpen(false)
+            }}
+            className="space-y-4"
+          >
+            <p className="text-sm text-muted-foreground">
+              Se guarda con la factura y solo se ve en la lista de facturas. No se imprime.
+            </p>
+            <textarea
+              className="flex min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              placeholder="Escribe una nota para esta venta..."
+              value={saleNote}
+              onChange={(e) => setSaleNote(e.target.value)}
+              autoFocus
+            />
+            <DialogFooter className="gap-2">
+              {saleNote.trim() && (
+                <Button type="button" variant="ghost" onClick={() => setSaleNote('')}>
+                  Borrar nota
+                </Button>
+              )}
+              <Button type="submit">Guardar</Button>
             </DialogFooter>
           </form>
         </DialogContent>

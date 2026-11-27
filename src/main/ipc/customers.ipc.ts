@@ -61,4 +61,9 @@ export function registerCustomerHandlers(db: Database.Database): void {
   ipcMain.handle('customers:getPayments', (_event, id: number) => {
     return service.getPayments(id)
   })
+
+  ipcMain.handle('customers:setCreditGrace', (_event, id: number, until: string | null) => {
+    service.setCreditGrace(id, until)
+    getBackupService().schedule()
+  })
 }

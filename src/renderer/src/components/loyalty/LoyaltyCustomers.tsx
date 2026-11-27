@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { formatUSD } from '@/lib/currency'
 import { useLoyalty, pointsActive, ticketsActive } from '@/hooks/useLoyalty'
-import { Star, Ticket, ChevronRight } from 'lucide-react'
+import { Star, Ticket, ChevronRight, Search } from 'lucide-react'
 import { rewardSummary } from './LoyaltyRewards'
 
 interface CustomerPoints {
@@ -59,6 +59,7 @@ export default function LoyaltyCustomers(): JSX.Element {
   const [addPoints, setAddPoints] = useState('')
   const [addTickets, setAddTickets] = useState('')
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     void load()
@@ -154,6 +155,10 @@ export default function LoyaltyCustomers(): JSX.Element {
     }
   }
 
+  const filtered = balances.filter((c) =>
+    c.name.toLowerCase().includes(query.trim().toLowerCase())
+  )
+
   return (
     <Card>
       <CardHeader>
@@ -163,9 +168,20 @@ export default function LoyaltyCustomers(): JSX.Element {
         </p>
       </CardHeader>
       <CardContent>
-        {balances.length > 0 ? (
+        {balances.length > 0 && (
+          <div className="relative mb-3 max-w-sm">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Buscar por nombre..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        )}
+        {filtered.length > 0 ? (
           <div className="divide-y rounded-lg border">
-            {balances.map((c) => (
+            {filtered.map((c) => (
               <button
                 key={c.customer_id}
                 onClick={() => void openCustomer(c)}
@@ -201,7 +217,9 @@ export default function LoyaltyCustomers(): JSX.Element {
           </div>
         ) : (
           <p className="py-8 text-center text-muted-foreground">
-            Aún no hay clientes con saldo acumulado
+            {balances.length > 0
+              ? 'Sin resultados para la búsqueda'
+              : 'Aún no hay clientes con saldo acumulado'}
           </p>
         )}
       </CardContent>

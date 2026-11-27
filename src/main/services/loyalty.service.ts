@@ -306,8 +306,20 @@ export class LoyaltyService {
       .prepare('SELECT customer_id, COALESCE(SUM(amount_usd), 0) as total FROM customer_payments GROUP BY customer_id')
       .all() as { customer_id: number; total: number }[]
     const payMap = new Map(pays.map((p) => [p.customer_id, p.total]))
+    // Clientes con prórroga vigente no se consideran "rojos": pueden participar
+    // y ganar en la rifa aunque sigan debiendo, hasta que venza el plazo dado.
+    const graced = new Set(
+      (
+        this.db
+          .prepare(
+            "SELECT id FROM customers WHERE credit_grace_until IS NOT NULL AND date(credit_grace_until) >= date('now','localtime')"
+          )
+          .all() as { id: number }[]
+      ).map((r) => r.id)
+    )
     const set = new Set<number>()
     for (const c of credit) {
+      if (graced.has(c.customer_id)) continue
       if (c.total - (payMap.get(c.customer_id) ?? 0) > threshold) set.add(c.customer_id)
     }
     return set
@@ -1127,6 +1139,55 @@ export class LoyaltyService {
         "INSERT INTO loyalty_ledger (customer_id, invoice_id, points, type) VALUES (?, ?, ?, 'earn')"
       )
       .run(ctx.customerId, ctx.invoiceId, points)
+  }
+
+  // Otorga los puntos/tickets que una factura a CRÉDITO habría dado, ahora que
+  // su deuda quedó saldada (las ventas a crédito no acumulan al emitirse). El
+  // método de pago que se pasa es el real (efectivo/tarjeta/transfer.), nunca
+  // 'credit', para que pase el filtro de las reglas. Es idempotente por factura:
+  // si ya existen filas 'earn' no vuelve a otorgar, así los pagos parciales no
+  // duplican. Los tickets quedan como 'earn' por factura → salen en la lista de
+  // tickets ganados para imprimirse.
+  grantCreditInvoiceEarnings(
+    invoiceId: number,
+    customerId: number | null,
+    totalUsd: number,
+    paymentMethod: string,
+    currency: string,
+    items: { productId?: number | null; quantity: number }[]
+  ): { points: number; tickets: number } {
+    if (!customerId) return { points: 0, tickets: 0 }
+    if (!this.getConfig().enabled) return { points: 0, tickets: 0 }
+    const ctx: EarnContext = { customerId, invoiceId, totalUsd, paymentMethod, currency, items }
+    let points = 0
+    let tickets = 0
+    const hasPoints = this.db
+      .prepare("SELECT 1 FROM loyalty_ledger WHERE invoice_id = ? AND type = 'earn' LIMIT 1")
+      .get(invoiceId)
+    if (!hasPoints) {
+      points = this.computeEarnedPoints(ctx)
+      if (points > 0) {
+        this.db
+          .prepare(
+            "INSERT INTO loyalty_ledger (customer_id, invoice_id, points, type, note) VALUES (?, ?, ?, 'earn', 'Pago de deuda')"
+          )
+          .run(customerId, invoiceId, points)
+      }
+    }
+    const hasTickets = this.db
+      .prepare("SELECT 1 FROM loyalty_tickets_ledger WHERE invoice_id = ? AND type = 'earn' LIMIT 1")
+      .get(invoiceId)
+    if (!hasTickets) {
+      tickets = this.computeEarnedTickets(ctx)
+      if (tickets > 0) {
+        this.db
+          .prepare(
+            "INSERT INTO loyalty_tickets_ledger (customer_id, invoice_id, tickets, type, note) VALUES (?, ?, ?, 'earn', 'Pago de deuda')"
+          )
+          .run(customerId, invoiceId, tickets)
+      }
+    }
+    return { points, tickets }
   }
 
   // ---- Rewards ---------------------------------------------------------------

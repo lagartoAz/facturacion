@@ -68,6 +68,8 @@ export function createApi(invoke: Invoke) {
       details?: { method?: 'cash' | 'card' | 'transfer'; currency?: 'USD' | 'VES' | 'COP' }
     ) => invoke('customers:addPayment', id, amount, notes, details),
     getCustomerPayments: (id: number) => invoke('customers:getPayments', id),
+    setCustomerCreditGrace: (id: number, until: string | null) =>
+      invoke('customers:setCreditGrace', id, until),
 
     // Suppliers
     getSuppliers: (search?: string) => invoke('suppliers:getAll', search),
